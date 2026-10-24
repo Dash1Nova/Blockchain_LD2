@@ -1,4 +1,5 @@
 #include <random>
+#include <chrono>
 
 #include "hash.h"
 
@@ -53,9 +54,31 @@ std::vector<Transaction> generateTransactions(const std::vector<User>& users) {
         trnsctn.receiver = users[rIndex].public_key;
         trnsctn.amount = amountDist(generator);
         trnsctn.sequence = i;
-        std::string data_to_hash = trnsctn.sender + "|" + trnsctn.receiver + "|" + std::to_string(trnsctn.amount) + "|" + std::to_string(trnsctn.sequence);
-        trnsctn.transaction_id = hash(convertTextTB(data_to_hash));
+        std::string converting = trnsctn.sender + "|" + trnsctn.receiver + "|" + std::to_string(trnsctn.amount) + "|" + std::to_string(trnsctn.sequence);
+        trnsctn.transaction_id = hash(convertTextTB(converting));
         transactions.push_back(trnsctn);
     }
     return transactions;
+}
+
+struct Block {
+    std::string prev_hash;
+    long long timestamp;
+    int version;
+    std::string tx_root;
+    long long nonce;
+    int difficulty;
+    std::vector<Transaction> transactions;
+};
+
+Block genesisBlock() {
+    Block genesis;
+    genesis.prev_hash = "0000000000000000000000000000000000000000000000000000000000000000";
+    genesis.timestamp = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    genesis.version = 1;
+    genesis.tx_root = hash(convertTextTB(""));
+    genesis.nonce = 0;        
+    genesis.difficulty = 3;   
+    genesis.transactions = std::vector<Transaction>();
+    return genesis;
 }
