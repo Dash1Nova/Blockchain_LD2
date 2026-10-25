@@ -85,158 +85,183 @@ Block genesisBlock() {
     return genesis;
 }
 
-std::vector<Block> runLoop(std::vector<User>& users, std::vector<Transaction>& transactions, std::vector<Block>& blockchain) {
-    unsigned int seed = 210;
-    std::mt19937 generator(seed);
-    std::string lastHash = blockchain.back().prev_hash;
+void runLoop() {
+    auto startAll = std::chrono::steady_clock::now();
 
-    while (!transactions.empty()) {
-        std::vector<Transaction> selectedTxs;
-        std::vector<Transaction> tempTxs = transactions;
+    std::vector<User> users = generateUsers();
+    std::vector<Transaction> pool = generateTransactions(users);
 
-        while (selectedTxs.size() < 100 && !tempTxs.empty()) {
-            std::uniform_int_distribution<size_t> distribution(0, tempTxs.size() - 1);
-            size_t randomIndex = distribution(generator);
-            selectedTxs.push_back(tempTxs[randomIndex]);
-            tempTxs.erase(tempTxs.begin() + randomIndex);
+    std::map<std::string, long long> balances;
+    for (auto& u : users) balances[u.public_key] = u.balance;
+
+    auto totalSum = [](const std::map<std::string, long long>& bal) {
+        long long sum = 0;
+        for (auto& p : bal) sum += p.second;
+        return sum;
+    };
+
+    auto blockHash = [](const Block& b) {
+        std::string s = b.prev_hash + "|" + std::to_string(b.timestamp) + "|" + std::to_string(b.version) + "|" + b.tx_root + "|" + std::to_string(b.nonce) + "|" + std::to_string(b.difficulty);
+        return hash(convertTextTB(s));
+    };
+
+    auto calcTxRoot = [](const std::vector<Transaction>& txs) {
+        std::string allIDs = "";
+        for (size_t i = 0; i < txs.size(); i++) {
+            if (i > 0) allIDs += "|";
+            allIDs += txs[i].transaction_id;
         }
+        return hash(convertTextTB(allIDs));
+    };
 
-        std::map<std::string, long long> copyBalances;
-
-        for (size_t i = 0; i < users.size(); i++) {
-            copyBalances[users[i].public_key] = users[i].balance;
+    auto goodPow = [](const std::string& h, int difficulty) {
+        if ((int)h.size() < difficulty) return false;
+        for (int i = 0; i < difficulty; i++) {
+            if (h[i] != '0') return false;
         }
+        return true;
+    };
 
-        std::vector<Transaction> validTransactions;
-        long long totalBefore = 0;
+    auto structureError = [](const Transaction& t, const std::map<std::string, long long>& bal) -> std::string {
+        if (bal.find(t.sender) == bal.end()) return "nezinomas siuntejas";
+        if (bal.find(t.receiver) == bal.end()) return "nezinomas gavejas";
+        if (t.sender == t.receiver) return "siuntejas ir gavejas tas pats";
+        if (t.amount <= 0) return "neigiama arba nuline suma";
+        std::string s = t.sender + "|" + t.receiver + "|" + std::to_string(t.amount) + "|" + std::to_string(t.sequence);
+        if (hash(convertTextTB(s)) != t.transaction_id) return "neteisingas transakcijos ID";
+        return "";
+    };
 
-        for (size_t i = 0; i < users.size(); i++) {
-            totalBefore += users[i].balance;
-        }
+    long long startSum = totalSum(balances);
+    std::vector<Block> chain;
+    Block genesis = genesisBlock();
+    while (!goodPow(blockHash(genesis), genesis.difficulty)) genesis.nonce++;
+    chain.push_back(genesis);
 
-        for (size_t i = 0; i < selectedTxs.size(); i++) {
-            Transaction transaction = selectedTxs[i];
+    std::vector<std::pair<Transaction, std::string>> rejected;
+    int included = 0;
+    std::mt19937 generator(222);
 
-            if (copyBalances[transaction.sender] >= transaction.amount) {
-                copyBalances[transaction.sender] -= transaction.amount;
-                copyBalances[transaction.receiver] += transaction.amount;
-                validTransactions.push_back(transaction);
+    while (!pool.empty()) {
+        std::vector<int> order;
+        while (order.size() < 100 && order.size() < pool.size()) {
+            int idx = generator() % pool.size();
+
+            if (std::find(order.begin(), order.end(), idx) == order.end()) {
+                order.push_back(idx);
             }
         }
 
-        long long totalAfter = 0;
+        std::map<std::string, long long> temp = balances;
+        std::vector<Transaction> chosen;
+        std::vector<std::string> removeIds;
 
-        for (size_t i = 0; i < users.size(); i++) {
-            totalAfter += copyBalances[users[i].public_key];
+        for (int idx : order) {
+            if (chosen.size() >= 100) break;
+            Transaction& t = pool[idx];
+
+            std::string err = structureError(t, temp);
+            if (err != "") {
+                rejected.push_back({t, err});
+                removeIds.push_back(t.transaction_id);
+                continue;
+            }
+            if (temp[t.sender] < t.amount) {
+                continue;
+            }
+            temp[t.sender] -= t.amount;
+            temp[t.receiver] += t.amount;
+            chosen.push_back(t);
         }
 
-        if (totalBefore != totalAfter) {
-            std::cout << "Bendra lesu suma pasikeite!" << std::endl;
+        for (auto& id : removeIds) {
+            for (size_t i = 0; i < pool.size(); i++) {
+                if (pool[i].transaction_id == id) { pool.erase(pool.begin() + i); break; }
+            }
+        }
+
+        if (chosen.empty()) {
+            if (!removeIds.empty()) continue;
             break;
         }
 
-        Block candidateBlock;
-        candidateBlock.prev_hash = lastHash;
-        candidateBlock.timestamp = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-        candidateBlock.version = 1;
-        candidateBlock.nonce = 0;
-        candidateBlock.difficulty = 3;
-        candidateBlock.transactions = validTransactions;
-        std::string joinedID = "";
+        Block block;
+        block.prev_hash = blockHash(chain.back());
+        block.timestamp = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+        block.version = 1;
+        block.transactions = chosen;
+        block.tx_root = calcTxRoot(chosen);
+        block.difficulty = 3;
+        block.nonce = 0;
 
-        for (size_t i = 0; i < validTransactions.size(); i++) {
-            joinedID += validTransactions[i].transaction_id;
-        }
-
-        candidateBlock.tx_root = hash(convertTextTB(joinedID));
-        std::string blockHash = "";
-        long long attempts = 0;
-
-        auto miningStart = std::chrono::steady_clock::now();
-
-        while (true) {
-            std::string header = candidateBlock.prev_hash + "|" + std::to_string(candidateBlock.timestamp) + "|" + std::to_string(candidateBlock.version) + "|" + candidateBlock.tx_root + "|" + std::to_string(candidateBlock.nonce) + "|" + std::to_string(candidateBlock.difficulty);
-            blockHash = hash(convertTextTB(header));
+        long long attempts = 1;
+        auto startMine = std::chrono::steady_clock::now();
+        while (!goodPow(blockHash(block), block.difficulty)) {
+            block.nonce++;
             attempts++;
-
-            if (blockHash.substr(0, 3) == "000") {
-                break;
-            }
-            candidateBlock.nonce++;
         }
+        auto endMine = std::chrono::steady_clock::now();
+        double mineTime = std::chrono::duration<double>(endMine - startMine).count();
 
-        auto miningEnd = std::chrono::steady_clock::now();
-        auto miningTime = std::chrono::duration<double>(miningEnd - miningStart).count();
-        std::cout << "Kasimo laikas: " << miningTime << " s" << std::endl;
-
-        std::string header = candidateBlock.prev_hash + "|" + std::to_string(candidateBlock.timestamp) + "|" + std::to_string(candidateBlock.version) + "|" + candidateBlock.tx_root + "|" + std::to_string(candidateBlock.nonce) + "|" + std::to_string(candidateBlock.difficulty);
-        std::string checkedHash = hash(convertTextTB(header));
-
-        if (checkedHash != blockHash || checkedHash.substr(0, 3) != "000" || candidateBlock.prev_hash != lastHash) {
-            std::cout << "Blokas atmestas." << std::endl;
+        bool ok = true;
+        if (block.prev_hash != blockHash(chain.back())) ok = false;
+        if (calcTxRoot(block.transactions) != block.tx_root) ok = false;
+        if (!goodPow(blockHash(block), block.difficulty)) ok = false;
+        std::map<std::string, long long> check = balances;
+        for (auto& t : block.transactions) {
+            if (structureError(t, check) != "" || check[t.sender] < t.amount) { ok = false; break; }
+            check[t.sender] -= t.amount;
+            check[t.receiver] += t.amount;
+        }
+        if (!ok) {
+            std::cout << "Blokas nepraejo patikros\n";
             break;
         }
 
-        blockchain.push_back(candidateBlock);
-
-        for (size_t i = 0; i < users.size(); i++) {
-            users[i].balance = copyBalances[users[i].public_key];
-        }
-
-        for (size_t i = 0; i < validTransactions.size(); i++) {
-            for (size_t j = 0; j < transactions.size(); j++) {
-                if (transactions[j].transaction_id == validTransactions[i].transaction_id) {
-                    transactions.erase(transactions.begin() + j);
-                    break;
-                }
+        chain.push_back(block);
+        balances = check;
+        for (auto& t : chosen) {
+            for (size_t i = 0; i < pool.size(); i++) {
+                if (pool[i].transaction_id == t.transaction_id) { pool.erase(pool.begin() + i); break; }
             }
         }
-        lastHash = checkedHash;
-        std::cout << "Bloko aukstis: " << blockchain.size() - 1 << std::endl;
-        std::cout << "Transakciju skaicius: " << validTransactions.size() << std::endl;
-        std::cout << "Prev hash: " << candidateBlock.prev_hash << std::endl;
-        std::cout << "Tx root: " << candidateBlock.tx_root << std::endl;
-        std::cout << "Bloko hash: " << checkedHash << std::endl;
-        std::cout << "Difficulty: " << candidateBlock.difficulty << std::endl;
-        std::cout << "Nonce: " << candidateBlock.nonce << std::endl;
-        std::cout << "Bandymai: " << attempts << std::endl;
+        included += chosen.size();
+
+        std::cout << "Bloko aukstis" << chain.size() - 1 << "\n";
+        std::cout << "transakciju skaicius: " << chosen.size() << "\n";
+        std::cout << "prev_hash: " << block.prev_hash << "\n";
+        std::cout << "tx_root: " << block.tx_root << "\n";
+        std::cout << "hash: " << blockHash(block) << "\n";
+        std::cout << "difficulty: " << block.difficulty << "\n";
+        std::cout << "nonce: " << block.nonce << "\n";
+        std::cout << "bandymu: " << attempts << "\n";
+        std::cout << "kasimo laikas: " << mineTime << " s\n";
     }
-    return blockchain;
+
+    auto endAll = std::chrono::steady_clock::now();
+    double allTime = std::chrono::duration<double>(endAll - startAll).count();
+
+    std::cout << "\n-------------------------------\n";
+    std::cout << "Vartotoju skaicius: " << users.size() << "\n";
+    std::cout << "Transakciju skaicius: " << pool.size() << "\n";
+    std::cout << "Priimta bloku (be genesis): " << chain.size() - 1 << "\n";
+    std::cout << "Itraukta: " << included << "\n";
+    std::cout << "Atmesta: " << rejected.size() << "\n";
+    std::cout << "Liko fonde: " << pool.size() << "\n";
+    std::cout << "Pradine lesu suma: " << startSum << "\n";
+    std::cout << "Galutine lesu suma: " << totalSum(balances) << "\n";
+    std::cout << "Bendras laikas: " << allTime << " s\n";
+
+    std::cout << "\nAtmestos:\n";
+    for (auto& r : rejected)
+        std::cout << "  seq " << r.first.sequence << " suma " << r.first.amount << " - " << r.second << "\n";
+
+    std::cout << "\nLikusios:\n";
+    for (auto& t : pool)
+        std::cout << "  seq " << t.sequence << " - siuntejas turi " << balances[t.sender] << ", reikia " << t.amount << "\n";
 }
 
-
 int main() {
-    auto startTime = std::chrono::steady_clock::now();
-    std::vector<User> users = generateUsers();
-    std::vector<Transaction> transactions = generateTransactions(users);
-    long long initialBalance = 0;
-
-    for (const User& user : users) {
-        initialBalance += user.balance;
-    }
-
-    size_t initialTransactionCount = transactions.size();
-    std::vector<Block> blockchain;
-    blockchain.push_back(genesisBlock());
-    runLoop(users, transactions, blockchain);
-    long long finalBalance = 0;
-
-    for (const User& user : users) {
-        finalBalance += user.balance;
-    }
-
-    auto endTime = std::chrono::steady_clock::now();
-    double totalTime = std::chrono::duration<double>(endTime - startTime).count();
-
-    std::cout << "\n--- Galutine suvestine ---\n";
-    std::cout << "Vartotoju skaicius: " << users.size() << '\n';
-    std::cout << "Pradinis transakciju skaicius: " << initialTransactionCount << '\n';
-    std::cout << "Priimtu bloku skaicius: " << blockchain.size() - 1 << '\n';
-    std::cout << "Itrauktu transakciju skaicius: " << initialTransactionCount - transactions.size() << '\n';
-    std::cout << "Likusių transakciju skaicius: " << transactions.size() << '\n';
-    std::cout << "Pradine lesu suma: " << initialBalance << '\n';
-    std::cout << "Galutine lesu suma: " << finalBalance << '\n';
-    std::cout << "Bendras programos laikas: " << totalTime << " s\n";
-
+    runLoop();
     return 0;
 }
