@@ -76,7 +76,7 @@ struct Block {
 Block genesisBlock() {
     Block genesis;
     genesis.prev_hash = "0000000000000000000000000000000000000000000000000000000000000000";
-    genesis.timestamp = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    genesis.timestamp = 0;
     genesis.version = 1;
     genesis.tx_root = hash(convertTextTB(""));
     genesis.nonce = 0;        
@@ -185,7 +185,7 @@ void runLoop() {
 
         Block block;
         block.prev_hash = blockHash(chain.back());
-        block.timestamp = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+        block.timestamp = 1;
         block.version = 1;
         block.transactions = chosen;
         block.tx_root = calcTxRoot(chosen);
@@ -257,59 +257,7 @@ void runLoop() {
     for (auto& t : pool) std::cout << "  seq " << t.sequence << " - siuntejas turi " << balances[t.sender] << ", reikia " << t.amount << "\n";
 }
 
-void testing() {
-    std::map<std::string, long long> test_users = {
-        {"A", 100},
-        {"B", 200},
-        {"C", 300}
-    };
-
-    std::vector<Transaction> txs = {
-        {"A", "B", 50, 1, ""},
-        {"A", "C", 25, 2, ""},
-        {"B", "C", 75, 3, ""}
-    };
-
-    long long start_sum = 0;
-    for (const auto& p : test_users) start_sum += p.second;
-
-    for (auto& t : txs) {
-        std::string s = t.sender + "|" + t.receiver + "|" + std::to_string(t.amount) + "|" + std::to_string(t.sequence);
-         t.transaction_id = hash(convertTextTB(s));
-    }
-
-    for (const auto& t : txs) {
-        std::string s = t.sender + "|" + t.receiver + "|" + std::to_string(t.amount) + "|" + std::to_string(t.sequence);
-        if (t.sender == t.receiver || t.amount <= 0) {
-            std::cout << "Neteisinga transakcija\n";
-            continue;
-        }
-        if (hash(convertTextTB(s)) != t.transaction_id) {
-            std::cout << "Neteisingas ID\n";
-            continue;
-        }
-        if (test_users[t.sender] < t.amount) {
-            std::cout << "Nepakanka lesu\n";
-            continue;
-        }
-        test_users[t.sender] -= t.amount;
-        test_users[t.receiver] += t.amount;
-        std::cout << "Priimta: " << t.sequence << "\n";
-    }
-
-    long long end_sum = 0;
-    for (const auto& p : test_users) {
-        std::cout << p.first << ": " << p.second << "\n";
-        end_sum += p.second;
-    }
-
-    std::cout << "Pradine suma: " << start_sum << "\n";
-    std::cout << "Galutine suma: " << end_sum << "\n";
-    std::cout << (start_sum == end_sum ? "Suma isliko ta pati\n" : "Suma pasikeite\n");
-}
-
 int main() {
-    testing();
     runLoop();
     return 0;
 }
