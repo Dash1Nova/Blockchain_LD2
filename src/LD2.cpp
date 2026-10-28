@@ -122,14 +122,12 @@ void runLoop() {
         return true;
     };
 
-    auto structureError = [](const Transaction& t, const std::map<std::string, long long>& bal) -> std::string {
-        if (bal.find(t.sender) == bal.end()) return "nezinomas siuntejas";
-        if (bal.find(t.receiver) == bal.end()) return "nezinomas gavejas";
-        if (t.sender == t.receiver) return "siuntejas ir gavejas tas pats";
-        if (t.amount <= 0) return "neigiama arba nuline suma";
+    auto structureError = [](const Transaction& t) {
+        if (t.sender == t.receiver) return std::string("siuntejas ir gavejas tas pats");
+        if (t.amount <= 0) return std::string("neigiama arba nuline suma");
         std::string s = t.sender + "|" + t.receiver + "|" + std::to_string(t.amount) + "|" + std::to_string(t.sequence);
-        if (hash(convertTextTB(s)) != t.transaction_id) return "neteisingas transakcijos ID";
-        return "";
+        if (hash(convertTextTB(s)) != t.transaction_id) return std::string("neteisingas transakcijos ID");
+        return std::string("");
     };
 
     long long startSum = totalSum(balances);
@@ -160,7 +158,7 @@ void runLoop() {
             if (chosen.size() >= 100) break;
             Transaction& t = pool[idx];
 
-            std::string err = structureError(t, temp);
+            std::string err = structureError(t);
             if (err != "") {
                 rejected.push_back({t, err});
                 removeIds.push_back(t.transaction_id);
@@ -209,7 +207,7 @@ void runLoop() {
         if (!goodPow(blockHash(block), block.difficulty)) ok = false;
         std::map<std::string, long long> check = balances;
         for (auto& t : block.transactions) {
-            if (structureError(t, check) != "" || check[t.sender] < t.amount) { ok = false; break; }
+            if (structureError(t) != "" || check[t.sender] < t.amount) { ok = false; break; }
             check[t.sender] -= t.amount;
             check[t.receiver] += t.amount;
         }
@@ -253,15 +251,65 @@ void runLoop() {
     std::cout << "Bendras laikas: " << allTime << " s\n";
 
     std::cout << "\nAtmestos:\n";
-    for (auto& r : rejected)
-        std::cout << "  seq " << r.first.sequence << " suma " << r.first.amount << " - " << r.second << "\n";
+    for (auto& r : rejected) std::cout << "  seq " << r.first.sequence << " suma " << r.first.amount << " - " << r.second << "\n";
 
     std::cout << "\nLikusios:\n";
-    for (auto& t : pool)
-        std::cout << "  seq " << t.sequence << " - siuntejas turi " << balances[t.sender] << ", reikia " << t.amount << "\n";
+    for (auto& t : pool) std::cout << "  seq " << t.sequence << " - siuntejas turi " << balances[t.sender] << ", reikia " << t.amount << "\n";
+}
+
+void testing() {
+    std::map<std::string, long long> test_users = {
+        {"A", 100},
+        {"B", 200},
+        {"C", 300}
+    };
+
+    std::vector<Transaction> txs = {
+        {"A", "B", 50, 1, ""},
+        {"A", "C", 25, 2, ""},
+        {"B", "C", 75, 3, ""}
+    };
+
+    long long start_sum = 0;
+    for (const auto& p : test_users) start_sum += p.second;
+
+    for (auto& t : txs) {
+        std::string s = t.sender + "|" + t.receiver + "|" + std::to_string(t.amount) + "|" + std::to_string(t.sequence);
+         t.transaction_id = hash(convertTextTB(s));
+    }
+
+    for (const auto& t : txs) {
+        std::string s = t.sender + "|" + t.receiver + "|" + std::to_string(t.amount) + "|" + std::to_string(t.sequence);
+        if (t.sender == t.receiver || t.amount <= 0) {
+            std::cout << "Neteisinga transakcija\n";
+            continue;
+        }
+        if (hash(convertTextTB(s)) != t.transaction_id) {
+            std::cout << "Neteisingas ID\n";
+            continue;
+        }
+        if (test_users[t.sender] < t.amount) {
+            std::cout << "Nepakanka lesu\n";
+            continue;
+        }
+        test_users[t.sender] -= t.amount;
+        test_users[t.receiver] += t.amount;
+        std::cout << "Priimta: " << t.sequence << "\n";
+    }
+
+    long long end_sum = 0;
+    for (const auto& p : test_users) {
+        std::cout << p.first << ": " << p.second << "\n";
+        end_sum += p.second;
+    }
+
+    std::cout << "Pradine suma: " << start_sum << "\n";
+    std::cout << "Galutine suma: " << end_sum << "\n";
+    std::cout << (start_sum == end_sum ? "Suma isliko ta pati\n" : "Suma pasikeite\n");
 }
 
 int main() {
+    testing();
     runLoop();
     return 0;
 }
