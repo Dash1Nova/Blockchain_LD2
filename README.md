@@ -3,28 +3,30 @@
 ## Hash funkcijos versijos pasirinkimas
 
 Šiam laboratoriniam darbui nusprendžiau naudoti iš ankstesnio darbo hash funkcijos DI versiją, o ne savo sukurtą pradinę versiją šių priežasčių:
-• Pirmo darbo eksperimentų eigoje mano hash funkcija parodė labai prastus rezultatus, kai tikrinau kolizijų atsparumą. Skirtingo ilgio įvesčių rinkiniuose buvo užfiksuota labai daug kolizijų (10 baitų ilgio įvestis generavo 81219 kolizijų, o 1000 baitų ilgio įvestis - 80088 kolizijų). Tai gali turėti neigiamos įtakos šio darbo transakcijų unikalumo užtikrinimui.
-• Pirmo darbo mano sukurta hash funckija prastai pasirodė ir lavinos efekto eksperimente. Ties 10 baitų įvesties ilgiu bitų skirtumo vidurkis buvo apie 0,78%, ir didėjant įvesties ilgiui lavinos efektas praktiškai išnykdavo. Bendras bitų skirtumo vidurkis buvo 0.23%; hex skirtumo vidurkis - 0.49% (lyginant su teoriniu reikalavimu, kad pakeitus vieną įvesties simbolų, išvestis turi pasikeisti apie 50%). Jei tęsčiau darbą su savo sukurta funkcija, tai turėtų neigiamos įtakos PoW įgyvendinimui.
+
+- Pirmo darbo eksperimentų eigoje mano hash funkcija parodė labai prastus rezultatus, kai tikrinau kolizijų atsparumą. Skirtingo ilgio įvesčių rinkiniuose buvo užfiksuota labai daug kolizijų (10 baitų ilgio įvestis generavo 81219 kolizijų, o 1000 baitų ilgio įvestis - 80088 kolizijų). Tai gali turėti neigiamos įtakos šio darbo transakcijų unikalumo užtikrinimui.
+- Pirmo darbo mano sukurta hash funckija prastai pasirodė ir lavinos efekto eksperimente. Ties 10 baitų įvesties ilgiu bitų skirtumo vidurkis buvo apie 0,78%, ir didėjant įvesties ilgiui lavinos efektas praktiškai išnykdavo. Bendras bitų skirtumo vidurkis buvo 0.23%; hex skirtumo vidurkis - 0.49% (lyginant su teoriniu reikalavimu, kad pakeitus vieną įvesties simbolų, išvestis turi pasikeisti apie 50%). Jei tęsčiau darbą su savo sukurta funkcija, tai turėtų neigiamos įtakos PoW įgyvendinimui.
 
 ## Paleidimas
 
 Projektui sukurti ir paleisti naudojamas CMake.
 
-Pirmiausia iš pagrindinio projekto katalogo sukuriamas build katalogas: `mkdir build`, `cd build`
-Tada sukonfigūruojamas projektas: `cmake ..`
-Programa sukompiliuojama: `cmake --build .`
-Po kompiliavimo programa paleidžiama: `Debug/LD2.exe`
+1. Pirmiausia iš pagrindinio projekto katalogo sukuriamas build katalogas: `mkdir build`, `cd build`
+2. Tada sukonfigūruojamas projektas: `cmake ..`
+3. Programa sukompiliuojama: `cmake --build .`
+4. Po kompiliavimo programa paleidžiama: `Debug/LD2.exe`
 
 ## Lambda išraiškų naudojimas
 
 Funkcijoje runLoop() naudojamos lambda išraiškos, kad galima būtų aprašyti pagalbines operacijas neužteršiant kodą dar papildomomis funkcijomis. Su lambdomis susijusi logika laikoma vienoje funkcijoje `runLoop()` ir kodas tampa lengviau skaitomas.
 
 Naudojamos lambda išraiškos:
-• `totalSum` – bendrai vartotojų lėšų sumai apskaičiuoti.
-• `blockHash` – bloko maišai apskaičiuoti.
-• `calcTxRoot` – transakcijų šakninei maišai apskaičiuoti.
-• `goodPow` – Proof of Work sąlygai patikrinti.
-• `structureError` – transakcijos klaidoms nustatyti.
+
+- `totalSum` – bendrai vartotojų lėšų sumai apskaičiuoti.
+- `blockHash` – bloko maišai apskaičiuoti.
+- `calcTxRoot` – transakcijų šakninei maišai apskaičiuoti.
+- `goodPow` – Proof of Work sąlygai patikrinti.
+- `structureError` – transakcijos klaidoms nustatyti.
 
 ## Modelio aprašymas
 
@@ -39,83 +41,89 @@ Sistema nenaudoja komisinių ar atlygių už blokų kasimą. Todėl, jei visi pe
 
 ## Generavimo seed
 
-• Vartotojų generavimo seed: `100`.
-• Transakcijų generavimo seed: `111`.
-• Transakcijų pasirinkimo seed: `222`.
-• Sugeneruojama 1000 vartotojų ir 10 000 transakcijų.
-• Transakcijos suma: nuo 1 iki 1000.
-• Viename bloke gali būti iki 100 transakcijų.
+- Vartotojų generavimo seed: `100`.
+- Transakcijų generavimo seed: `111`.
+- Transakcijų pasirinkimo seed: `222`.
+- Sugeneruojama 1000 vartotojų ir 10 000 transakcijų.
+- Transakcijos suma: nuo 1 iki 1000.
+- Viename bloke gali būti iki 100 transakcijų.
 
 ## Vieno bloko išvestis (pirmas blokas)
 
-Bloko aukstis: `1`
-Transakcijų skaičius: `100`
-prev_hash: `000c5dd430a95139c42a27e4e7023f6b6a9e8b01cdc3072a45dbc90d92071546`
-tx_root: `f23abe9e14ec154b7fcf6f779e6bce1bb50872fa707e6442e4326c7d9685153d`
-Bloko hash: `000e21bf65308ec02e8c66fb706e5b1f7d98b42df70a61b3bad1257ed3bea487`
-difficulty: `3`
-nonce: `1852`
-Bandymų skaičius: `1853`
-Kasimo laikas: `0.0787519 s`
+- Bloko aukstis: `1`
+- Transakcijų skaičius: `100`
+- prev_hash: `000c5dd430a95139c42a27e4e7023f6b6a9e8b01cdc3072a45dbc90d92071546`
+- tx_root: `f23abe9e14ec154b7fcf6f779e6bce1bb50872fa707e6442e4326c7d9685153d`
+- Bloko hash: `000e21bf65308ec02e8c66fb706e5b1f7d98b42df70a61b3bad1257ed3bea487`
+- difficulty: `3`
+- nonce: `1852`
+- Bandymų skaičius: `1853`
+- Kasimo laikas: `0.0787519 s`
 
 ## Galutinė suvestinė
 
-Vartotoju skaičius: 1000
-Priimta blokų (be genesis): 101
-Itrauktų transakcijų skaičius: 9993
-Atmestų transakcijų skaičius: 0
-Liko fonde transakcijų: 7
-Pradine lėšų suma: 491084187
-Galutine lėšų suma: 491084187
-Vykdymo laikas: 28.9073 s
+- Vartotoju skaičius: 1000
+- Priimta blokų (be genesis): 101
+- Itrauktų transakcijų skaičius: 9993
+- Atmestų transakcijų skaičius: 0
+- Liko fonde transakcijų: 7
+- Pradine lėšų suma: 491084187
+- Galutine lėšų suma: 491084187
+- Vykdymo laikas: 28.9073 s
 
 ## Mažo testo rezultatai
 
 Transakcijų maišos paleidžiant kelis kartus sutampa. Bloko hash irgi.
-1 paleidimas:
-Bloko aukstis: 1
-transakciju skaicius: 100
-prev_hash: 0003620877a89b26fcba1844a5735579dfb657c105101281985466907c339cd7
-tx_root: f23abe9e14ec154b7fcf6f779e6bce1bb50872fa707e6442e4326c7d9685153d
-hash: 000543bd5984235ce4a6329b8fafd805b31abb70b0fd10671548b3576a242bea
-difficulty: 3
-nonce: 1710
 
-2 paleidimas:
-Bloko aukstis: 1
-transakciju skaicius: 100
-prev_hash: 0003620877a89b26fcba1844a5735579dfb657c105101281985466907c339cd7
-tx_root: f23abe9e14ec154b7fcf6f779e6bce1bb50872fa707e6442e4326c7d9685153d
-hash: 000543bd5984235ce4a6329b8fafd805b31abb70b0fd10671548b3576a242bea
-difficulty: 3
-nonce: 1710
+1. 1 paleidimas:
+
+- Bloko aukstis: 1
+- transakciju skaicius: 100
+- prev_hash: 0003620877a89b26fcba1844a5735579dfb657c105101281985466907c339cd7
+- tx_root: f23abe9e14ec154b7fcf6f779e6bce1bb50872fa707e6442e4326c7d9685153d
+- hash: 000543bd5984235ce4a6329b8fafd805b31abb70b0fd10671548b3576a242bea
+- difficulty: 3
+- nonce: 1710
+
+2. 2 paleidimas:
+
+- Bloko aukstis: 1
+- transakciju skaicius: 100
+- prev_hash: 0003620877a89b26fcba1844a5735579dfb657c105101281985466907c339cd7
+- tx_root: f23abe9e14ec154b7fcf6f779e6bce1bb50872fa707e6442e4326c7d9685153d
+- hash: 000543bd5984235ce4a6329b8fafd805b31abb70b0fd10671548b3576a242bea
+- difficulty: 3
+- nonce: 1710
 
 ---
 
 Prieš įtraukiant transakciją taip pat tikrinamas siuntėjo laikinas balansas. Tai užtikrina šios kodo eilutės:
-`if (temp[t.sender] < t.amount) {
+
+````cpp
+if (temp[t.sender] < t.amount) {
     continue;
 }
 temp[t.sender] -= t.amount;
 temp[t.receiver] += t.amount;`
-Priėmus transakciją, laikini balansai atnaujinami iš karto. Jei lėšų nepakanka, transakcija į bloką neįtraukiama. Taip pat palygintos pradinė ir galutinė bendra lėšų suma — jos sutapo (Pradine lesu suma: 491084187; Galutine lesu suma: 491084187).
+Priėmus transakciją, laikini balansai atnaujinami iš karto. Jei lėšų nepakanka, transakcija į bloką neįtraukiama. Taip pat palygintos pradinė ir galutinė bendra lėšų suma — jos sutapo (Pradine lesu suma: 491084187; Galutine lesu suma: 491084187).```
 
 ---
 
 Ši kodo dalis apsaugo nuo transakcijų dubliavimosi - ji neleisti tai pačiai transakcijai likti fonde po įtraukimo į bloką:
-`for (auto& t : chosen) {
+```cpp
+for (auto& t : chosen) {
     for (size_t i = 0; i < pool.size(); i++) {
         if (pool[i].transaction_id == t.transaction_id) {
             pool.erase(pool.begin() + i);
             break;
         }
     }
-}`
+}```
 
 ---
 
 Paskutinis nepilnas blokas veikia. Programos vykdymo metu 100-ajame bloke buvo 95 transakcijos. Tai parodo, kad programa gali sudaryti blokus su mažesniu nei 100 transakcijų skaičiumi.
-
+```text
 Paskutinio bloko išvestis:
 Bloko aukstis: 100
 transakciju skaicius: 95
@@ -125,4 +133,5 @@ hash: 000627138d775ef4309a6fed13ae69b79ba4d664226bd73e8adbfdce7b93d705
 difficulty: 3
 nonce: 215
 bandymu: 216
-kasimo laikas: 0.0276275 s
+kasimo laikas: 0.0276275 s```
+````
