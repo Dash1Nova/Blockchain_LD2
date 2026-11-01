@@ -22,8 +22,11 @@
 
 4. Kasimo (Proof-of-Work) simuliacija
 
-- Pradedamas kasimo ratas su pradiniu 10 000 bandymų. Jei bloko rasti nepavyksta, kitame rate bandymų skaičius dvigubinamas (iki 20k, 40k, 80k).
-- Visi 5 kandidatai iš eilės keičia savo nonce skaičių ir ieško hash kodo, kuris prasidėtų reikiamu nulių skaičiumi (pagal difficulty, kuris šiuo atveju yra 3).
+- Pradedamas kasimo etapas su 5 blokų kandidatais.
+- Kiekvienas kandidatas kasamas atskiroje gijoje ir savarankiškai keičia savo `nonce` reikšmę.
+- Ieškoma hash reikšmės, kuri prasidėtų reikiamu nulių skaičiumi (difficulty = 3).
+- Kiekvienam kandidatui nustatyti vienodi bandymų biudžetai: 10 000, 20 000, 40 000 ir 80 000 bandymų.
+- Pirmą tinkamą bloką radusi gija bando paskelbti save laimėtoja. Kitos gijos, pastebėjusios laimėtoją, nutraukia paiešką.
 
 5. Laimėtojo patvirtinimas ir grandinės pratęsimas
 
@@ -80,13 +83,13 @@ Prieš įtraukiant bloką į grandinę tikrinama:
 
 Kiekviename etape sukuriami 5 kandidatai. Visi jie naudoja tą patį transakcijų fondą, pradinius balansus ir ankstesnio bloko maišą.
 Kiekvienam kandidatui sudaromas atskiras transakcijų sąrašas ir laikina balansų kopija. Viename bloke gali būti ne daugiau kaip 100 transakcijų.
-Kandidatai kasami tokia tvarka:
-
-- 1 etapas – 10 000 bandymų.
-- 2 etapas – papildomi 20 000 bandymų.
-- 3 etapas – papildomi 40 000 bandymų.
-- 4 etapas – papildomi 80 000 bandymų.
-  Po kiekvieno etapo tikrinama, ar kandidatas rado tinkamą bloką. Nurodyti 10 000, 20 000, 40 000 ir 80 000 bandymų skaičiai yra papildomi kasimo bandymai. Tai nėra privalomas bandymų skaičius. Jei kandidatas randa tinkamą bloką anksčiau, kasimas baigiamas. Laimėjo pirmasis tinkamas kandidatas. Prieš įtraukiant jo bloką į grandinę, jis dar kartą patikrinamas.
+Kiekvienas kandidatas kasamas atskiroje gijoje. Gijos savarankiškai keičia savo kandidato nonce reikšmę ir ieško tinkamo hash kodo.
+Kasimo bandymo skaičiai:
+1 etapas – 10 000 bandymų.
+2 etapas – papildomi 20 000 bandymų.
+3 etapas – papildomi 40 000 bandymų.
+4 etapas – papildomi 80 000 bandymų.
+Pirmą tinkamą bloką radusi gija naudoja std::atomic ir compare_exchange_strong, kad saugiai paskelbtų save laimėtoja. Taip užtikrinama, kad laimėtoju būtų priimtas tik vienas kandidatas. Kitos gijos tikrina, ar jau yra laimėtojas, ir nutraukia kasimą. Pagrindinė programa laukia visų gijų pabaigos naudodama `join()`. Laimėjęs blokas dar kartą patikrinamas su checkBlock ir tik tada prijungiamas prie grandinės.
 
 ## Kandidatų bandymų ir laiko suvestinė
 
@@ -113,3 +116,15 @@ Kandidatas 1 laimėjo, nes pagal programos logiką kandidatai tikrinami nustatyt
   `Kode`: Nėra šakojimosi. Programa aklai paima patį pirmą sėkmingai kasimo užduotį įveikusį kandidatą ir iškart jį prijungia. Nėra suprogramuota galimybė išspręsti situacijos, jei du mazgai atneštų skirtingus blokus vienu metu.
 - `Teorijoje`: Kiekvienas mazgas pats savarankiškai tikrina gautą bloką ir nusprendžia, tikėti juo ar ne.
   `Kode`: Viską valdo viena bendra funkcija `checkBlock`. Ji viena patikrina bloką ir iškart pakeičia pinigines visų vartotojų sąskaitas bendroje programos atmintyje. Nėra jokio individualaus mazgų „apsisprendimo“.
+
+## Nuoseklaus ir lygiagretaus kasimo palyginimas\*\*
+
+Programoje įgyvendinti du kasimo būdai:
+
+- `Nuoseklus kasimas` – kandidatai tikrinami vienas po kito. Kitas kandidatas pradedamas kasti tik tada, kai ankstesnis neranda tinkamo bloko.
+- `Lygiagretus kasimas` – visi 5 kandidatai kasami atskirose gijose vienu metu. Pirmą tinkamą bloką radusi gija paskelbia laimėtoją, o kitos gijos sustabdo paiešką.
+  Abiem atvejais naudojami tie patys kandidatai, difficulty reikšmė ir bandymų skaičiai. Kiekvienam vykdymo būdui matuojamas kasimo laikas ir atliktų bandymų skaičius.
+  Pagreitėjimas apskaičiuojamas pagal formulę:
+  `Nuoseklus laikas / Lygiagretus laikas`
+  Pagal programos rezultatus, `nuoseklaus kasimo laikas - 14.6787 s`, o `lygiagretaus kasimo bendras laika - 17.2378 s`. `Bendras pagreitejimas: 0.85154 karto`.
+  Šiuo atveju lygiagretus kasimas buvo lėtesnis už nuoseklų. Taip galėjo nutikti dėl to, kad buvo paleistos net penkios gijos, jų veikimo koordinavimui reikėjo laiko. Be to, visos gijos dalijasi tais pačiais procesoriaus resursais, todėl jų darbas nebūtinai vyksta visiškai lygiagrečiai.
