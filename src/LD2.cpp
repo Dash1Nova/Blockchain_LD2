@@ -290,6 +290,25 @@ std::string calculateMerkleRoot(const std::vector<Transaction>& txs) {
     return hashes[0];
 }
 
+void testMerkleTree() {
+    std::vector<Transaction> testTransactions;
+    for (int i = 1; i <= 5; i++) {
+        Transaction t;
+        t.sender = "user" + std::to_string(i);
+        t.receiver = "user" + std::to_string(i + 1);
+        t.amount = i * 10;
+        t.sequence = i;
+        std::string data = t.sender + "|" + t.receiver + "|" + std::to_string(t.amount) + "|" + std::to_string(t.sequence);
+        t.transaction_id = hash(convertTextTB(data));
+        testTransactions.push_back(t);
+    }
+
+    std::cout << "1 transakcija: " << calculateMerkleRoot({testTransactions[0]}) << "\n";
+    std::cout << "2 transakcijos: " << calculateMerkleRoot({ testTransactions[0], testTransactions[1]}) << "\n";
+    std::cout << "3 transakcijos: " << calculateMerkleRoot({testTransactions[0], testTransactions[1], testTransactions[2]}) << "\n";
+    std::cout << "5 transakcijos: " << calculateMerkleRoot(testTransactions) << "\n";
+}
+
 int main() {
     runLoop();
     return 0;
