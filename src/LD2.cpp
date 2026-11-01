@@ -85,6 +85,8 @@ Block genesisBlock() {
     return genesis;
 }
 
+std::string calculateMerkleRoot(const std::vector<Transaction>& txs);
+
 void runLoop() {
     auto startAll = std::chrono::steady_clock::now();
 
@@ -310,6 +312,8 @@ void testMerkleTree() {
 }
 
 int main() {
+    testMerkleTree();
+    std::cout << "\n--------------------------------------\n";
     runLoop();
     return 0;
 }
