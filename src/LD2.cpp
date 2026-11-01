@@ -91,10 +91,31 @@ std::string calculateMerkleRoot(const std::vector<Transaction>& txs);
 void runLoop() {
     auto startAll = std::chrono::steady_clock::now();
     std::vector<User> users = generateUsers();
-    std::vector<Transaction> pool = generateTransactions(users);
-    size_t transactionCount = pool.size();
+    std::vector<Transaction> allTransactions = generateTransactions(users);
+    std::vector<Transaction> pool;
+    size_t transactionCount = allTransactions.size();
     std::map<std::string, long long> balances;
     for (auto& u : users) balances[u.public_key] = u.balance;
+    std::set<std::string> poolIds;
+    std::vector<std::pair<Transaction, std::string>> rejected;
+
+    for (auto& t : allTransactions) {
+        std::string s = t.sender + "|" + t.receiver + "|" + std::to_string(t.amount) + "|" + std::to_string(t.sequence);
+        std::string error = "";
+
+        if (balances.find(t.sender) == balances.end()) error = "nezinomas siuntejas";
+        else if (balances.find(t.receiver) == balances.end()) error = "nezinomas gavejas";
+        else if (t.sender == t.receiver) error = "siuntejas ir gavejas tas pats";
+        else if (t.amount <= 0) error = "suma turi buti teigiama";
+        else if (hash(convertTextTB(s)) != t.transaction_id) error = "neteisingas transakcijos ID";
+        else if (poolIds.count(t.transaction_id) != 0) error = "pasikartojantis ID fonde";
+
+        if (error != "") rejected.push_back({t, error});
+        else {
+            pool.push_back(t);
+            poolIds.insert(t.transaction_id);
+        }
+    }
 
     auto totalSum = [](const std::map<std::string, long long>& bal) {
         long long sum = 0;
@@ -125,7 +146,6 @@ void runLoop() {
     };
 
     std::set<std::string> includedIds;
-    std::vector<std::pair<Transaction, std::string>> rejected;
     long long startSum = totalSum(balances);
     std::vector<Block> chain;
     Block genesis = genesisBlock();
