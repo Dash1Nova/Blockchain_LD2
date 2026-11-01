@@ -106,12 +106,7 @@ void runLoop() {
     };
 
     auto calcTxRoot = [](const std::vector<Transaction>& txs) {
-        std::string allIDs = "";
-        for (size_t i = 0; i < txs.size(); i++) {
-            if (i > 0) allIDs += "|";
-            allIDs += txs[i].transaction_id;
-        }
-        return hash(convertTextTB(allIDs));
+        return calculateMerkleRoot(txs);
     };
 
     auto goodPow = [](const std::string& h, int difficulty) {
@@ -277,6 +272,22 @@ std::string twoHashJoin(const std::string& left, const std::string& right) {
         bytes.push_back(first * 16 + second);
     }
     return hash(bytes);
+}
+
+std::string calculateMerkleRoot(const std::vector<Transaction>& txs) {
+    if (txs.empty()) return hash(convertTextTB(""));
+    std::vector<std::string> hashes;
+    for (const auto& tx : txs) hashes.push_back(tx.transaction_id);
+
+    while (hashes.size() > 1) {
+        std::vector<std::string> new_level;
+        for (size_t i = 0; i < hashes.size(); i += 2) {
+            if (i + 1 < hashes.size()) new_level.push_back(twoHashJoin(hashes[i], hashes[i + 1]));
+            else new_level.push_back(twoHashJoin(hashes[i], hashes[i]));
+        }
+        hashes = new_level;
+    }
+    return hashes[0];
 }
 
 int main() {
