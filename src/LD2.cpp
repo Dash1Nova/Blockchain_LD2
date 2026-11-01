@@ -3,6 +3,7 @@
 #include <chrono>
 #include <map>
 #include <set>
+#include <thread>
 
 #include "hash.h"
 
@@ -156,6 +157,8 @@ void runLoop() {
 
     std::mt19937 generator(222);
     std::string stopReason;
+    double totalSequentialTime = 0.0;
+    double totalParallelTime = 0.0;
 
     auto checkBlock = [&](const Block& b, std::map<std::string, long long>& check) {
         if (b.prev_hash != blockHash(chain.back())) return false;
@@ -211,7 +214,7 @@ void runLoop() {
             b.timestamp = timestamp;
             b.version = supportedVersion;
             b.difficulty = requiredDifficulty;
-            b.nonce = 0;
+            b.nonce = static_cast<long long>(k) * 1000000LL;
 
             for (size_t idx : order) {
                 if (b.transactions.size() >= maxTransactions) break;
@@ -229,6 +232,16 @@ void runLoop() {
             candidates.push_back(b);
         }
 
+        std::vector<Block> sequentialCandidates = candidates;
+        std::vector<Block> parallelCandidates = candidates;
+        std::vector<long long> sequentialAttempts(5, 0);
+        std::vector<long long> parallelAttempts(5, 0);
+        double sequentialTotalTime = 0.0;
+        double parallelTotalTime = 0.0;
+        int sequentialWinner = -1;
+
+
+
         bool hasTransactions = false;
         for (auto& b : candidates) if (!b.transactions.empty()) hasTransactions = true;
         if (!hasTransactions) {
@@ -240,49 +253,97 @@ void runLoop() {
         std::cout << "Kandidatu tvarka: 1, 2, 3, 4, 5\n";
         std::cout << "Laimi pirmas sia tvarka rastas tinkamas blokas\n";
         std::cout << "Biudzetai: 10000, 20000, 40000, 80000 bandymu\n";
-        long long budget = 10000;
-        std::vector<long long> attempts(5, 0);
+        std::vector<long long>& attempts = parallelAttempts;
         std::vector<double> mineTime(5, 0.0);
-        int winner = -1;
+        std::atomic<int> winner(-1);
+        const int candidateCount = 5;
 
-        for (int round = 0; round < 4; round++) {
-            std::cout << "Ratas " << round + 1 << ", papildomas biudzetas: " << budget << "\n";
-            for (int k = 0; k < 5; k++) {
-                Block& b = candidates[k];
-                if (b.transactions.empty()) continue;
-                auto startMine = std::chrono::steady_clock::now();
+        auto sequentialStart = std::chrono::steady_clock::now();
+        for (int k = 0; k < static_cast<int>(sequentialCandidates.size()) && sequentialWinner == -1; k++) {
+            Block& b = sequentialCandidates[k];
+            long long budget = 10000;
+            for (int round = 0; round < 4 && sequentialWinner == -1; round++) {
                 for (long long n = 0; n < budget; n++) {
-                    attempts[k]++;
-                    if (goodPow(blockHash(b), requiredDifficulty)) break;
+                    sequentialAttempts[k]++;
+                    if (goodPow(blockHash(b), requiredDifficulty)) {
+                        std::map<std::string, long long> check;
+                        if (checkBlock(b, check)) {
+                            sequentialWinner = k;
+                            break;
+                        }
+                    }
                     b.nonce++;
                 }
-
-                auto endMine = std::chrono::steady_clock::now();
-                mineTime[k] += std::chrono::duration<double>(endMine - startMine).count();
-                std::cout << "Kandidatas " << k + 1 << ": bandymu " << attempts[k] << ", kasimo laikas " << mineTime[k] << " s\n";
+                budget *= 2;
             }
-
-            for (int k = 0; k < 5; k++) {
-                Block& b = candidates[k];
-                if (b.transactions.empty()) continue;
-                if (goodPow(blockHash(b), requiredDifficulty)) {
-                    std::map<std::string, long long> check;
-                    if (checkBlock(b, check)) {
-                        winner = k;
-                        break;
-                    }
-                }
-            }
-            if (winner != -1) break;
-            budget *= 2;
         }
 
-        if (winner == -1) {
+        auto sequentialEnd = std::chrono::steady_clock::now();
+        sequentialTotalTime = std::chrono::duration<double>(sequentialEnd - sequentialStart).count();
+        totalSequentialTime += sequentialTotalTime;
+        long long sequentialTotalAttempts = 0;
+        for (long long count : sequentialAttempts) sequentialTotalAttempts += count;
+
+        std::cout << "\n========== N U O S E K L U S   K A S I M A S ==========\n";
+        std::cout << "Laikas: " << sequentialTotalTime << " s\n";
+        std::cout << "Bendras bandymu skaicius: " << sequentialTotalAttempts << "\n";
+        if (sequentialWinner != -1) std::cout << "Laimetojas: kandidatas " << sequentialWinner + 1 << "\n";
+        else std::cout << "Laimetojas nerastas.\n";
+
+        std::vector<std::thread> workers;
+        auto parallelStart = std::chrono::steady_clock::now();
+
+        for (int k = 0; k < candidateCount; k++) {
+            workers.emplace_back([&, k]() {
+                Block& b = parallelCandidates[k];
+                long long budget = 10000;
+                auto start = std::chrono::steady_clock::now();
+                for (int round = 0; round < 4 && winner.load() == -1; round++) {
+                    for (long long n = 0; n < budget && winner.load() == -1; n++) {
+                        attempts[k]++;
+                        if (goodPow(blockHash(b), requiredDifficulty)) {
+                            std::map<std::string, long long> check;
+                            if (checkBlock(b, check)) {
+                                int expected = -1;
+                                winner.compare_exchange_strong(expected, k);
+                                break;
+                            }
+                        }
+                        b.nonce++;
+                    }
+                    budget *= 2;
+                }
+                auto end = std::chrono::steady_clock::now();
+                mineTime[k] += std::chrono::duration<double>(end - start).count();
+            });
+        }
+
+        for (auto& worker : workers) worker.join();
+        int winningCandidate = winner.load();
+        auto parallelEnd = std::chrono::steady_clock::now();
+        parallelTotalTime = std::chrono::duration<double>(parallelEnd - parallelStart).count();
+        totalParallelTime += parallelTotalTime;
+        std::cout << "\nLygiagretus kasimas baigtas.\n";
+        std::cout << "Bendras laikas: " << parallelTotalTime << " s\n";
+        if (winner.load() != -1) std::cout << "Laimetojas: kandidatas " << winner.load() + 1 << "\n";
+        else std::cout << "Laimetojo nerasta per nustatytus bandymus.\n";
+
+        if (winningCandidate == -1) {
             stopReason = "pasiekta kasimo bandymu riba";
             break;
         }
 
-        Block& block = candidates[winner];
+        long long parallelTotalAttempts = 0;
+        for (long long count : parallelAttempts) parallelTotalAttempts += count;
+
+        std::cout << "\n========== PALYGINIMAS ==========\n";
+        std::cout << "Nuoseklus laikas: " << sequentialTotalTime << " s\n";
+        std::cout << "Lygiagretus laikas: " << parallelTotalTime << " s\n";
+        std::cout << "Nuoseklus bandymu skaicius: " << sequentialTotalAttempts << "\n";
+        std::cout << "Lygiagretus bandymu skaicius: " << parallelTotalAttempts << "\n";
+        if (parallelTotalTime > 0.0) std::cout << "Pagreitejimas: " << sequentialTotalTime / parallelTotalTime << " karto\n";
+
+        Block& block = parallelCandidates[winningCandidate];
         std::map<std::string, long long> check;
         if (!checkBlock(block, check)) {
             stopReason = "laimetojas nepraejo pakartotines patikros";
@@ -301,7 +362,7 @@ void runLoop() {
             }
         }
 
-        std::cout << "Laimetojas: " << winner + 1 << "\n";
+        std::cout << "Laimetojas: " << winningCandidate + 1 << "\n";
         std::cout << "Bloko aukstis: " << chain.size() - 1 << "\n";
         std::cout << "Transakciju skaicius: " << block.transactions.size() << "\n";
         std::cout << "prev_hash: " << block.prev_hash << "\n";
@@ -309,8 +370,8 @@ void runLoop() {
         std::cout << "hash: " << blockHash(block) << "\n";
         std::cout << "difficulty: " << block.difficulty << "\n";
         std::cout << "nonce: " << block.nonce << "\n";
-        std::cout << "Bandymu: " << attempts[winner] << "\n";
-        std::cout << "Kasimo laikas: " << mineTime[winner] << " s\n";
+        std::cout << "Bandymu: " << parallelAttempts[winningCandidate] << "\n";
+        std::cout << "Kasimo laikas: " << mineTime[winningCandidate] << " s\n";
     }
 
     auto endAll = std::chrono::steady_clock::now();
@@ -327,8 +388,11 @@ void runLoop() {
     std::cout << "Galutine lesu suma: " << totalSum(balances) << "\n";
     std::cout << "Bendras laikas: " << allTime << " s\n";
 
-    if (stopReason != "") std::cout << "Sustabdymo priezastis: " << stopReason << "\n";
+    std::cout << "Bendras nuoseklaus kasimo laikas: " << totalSequentialTime << " s\n";
+    std::cout << "Bendras lygiagretaus kasimo laikas: " << totalParallelTime << " s\n";
+    if (totalParallelTime > 0.0) std::cout << "Bendras pagreitejimas: " << totalSequentialTime / totalParallelTime << " karto\n";
 
+    if (stopReason != "") std::cout << "Sustabdymo priezastis: " << stopReason << "\n";
     std::cout << "\nAtmestos:\n";
     for (auto& r : rejected) std::cout << "seq " << r.first.sequence << " - " << r.second << "\n";
 
