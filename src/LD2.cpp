@@ -74,6 +74,10 @@ struct Block {
     std::vector<Transaction> transactions;
 };
 
+const int requiredDifficulty = 3;
+const int supportedVersion = 1;
+const size_t maxTransactions = 100;
+
 Block genesisBlock() {
     Block genesis;
     genesis.prev_hash = "0000000000000000000000000000000000000000000000000000000000000000";
@@ -87,6 +91,60 @@ Block genesisBlock() {
 }
 
 std::string calculateMerkleRoot(const std::vector<Transaction>& txs);
+
+long long totalSum(const std::map<std::string, long long>& bal) {
+    long long sum = 0;
+    for (auto& p : bal) sum += p.second;
+    return sum;
+}
+
+std::string blockHash(const Block& b) {
+    std::string s = b.prev_hash + "|" + std::to_string(b.timestamp) + "|" + std::to_string(b.version) + "|" + b.tx_root + "|" + std::to_string(b.nonce) + "|" + std::to_string(b.difficulty);
+    return hash(convertTextTB(s));
+}
+
+bool goodPow(const std::string& h, int difficulty) {
+    if (difficulty <= 0) return false;
+    if (h.size() < (size_t)difficulty) return false;
+    for (int i = 0; i < difficulty; i++) if (h[i] != '0') return false;
+    return true;
+}
+
+std::string structureError(const Transaction& t, const std::map<std::string, long long>& balances) {
+    if (balances.find(t.sender) == balances.end()) return std::string("nezinomas siuntejas");
+    if (balances.find(t.receiver) == balances.end()) return std::string("nezinomas gavejas");
+    if (t.sender == t.receiver) return std::string("siuntejas ir gavejas tas pats");
+    if (t.amount <= 0) return std::string("suma turi buti teigiama");
+    std::string s = t.sender + "|" + t.receiver + "|" + std::to_string(t.amount) + "|" + std::to_string(t.sequence);
+    if (hash(convertTextTB(s)) != t.transaction_id) return std::string("neteisingas transakcijos ID");
+    return std::string("");
+}
+
+bool checkBlock(const Block& b, const Block& prev, const std::map<std::string, long long>& balances, const std::set<std::string>& includedIds, std::map<std::string, long long>& check) {
+    if (b.prev_hash != blockHash(prev)) return false;
+    if (b.version != supportedVersion) return false;
+    if (b.difficulty != requiredDifficulty) return false;
+    if (b.transactions.empty()) return false;
+    if (b.transactions.size() > maxTransactions) return false;
+
+    check = balances;
+    std::set<std::string> blockIds;
+
+    for (auto& t : b.transactions) {
+        if (structureError(t, check) != "") return false;
+        if (includedIds.count(t.transaction_id) != 0) return false;
+        if (blockIds.count(t.transaction_id) != 0) return false;
+        if (check.at(t.sender) < t.amount) return false;
+        if (check.at(t.receiver) > std::numeric_limits<long long>::max() - t.amount) return false;
+        check.at(t.sender) -= t.amount;
+        check.at(t.receiver) += t.amount;
+        blockIds.insert(t.transaction_id);
+    }
+
+    if (calculateMerkleRoot(b.transactions) != b.tx_root) return false;
+    if (!goodPow(blockHash(b), requiredDifficulty)) return false;
+    return true;
+}
 
 void runLoop() {
     auto startAll = std::chrono::steady_clock::now();
@@ -117,33 +175,6 @@ void runLoop() {
         }
     }
 
-    auto totalSum = [](const std::map<std::string, long long>& bal) {
-        long long sum = 0;
-        for (auto& p : bal) sum += p.second;
-        return sum;
-    };
-
-    auto blockHash = [](const Block& b) {
-        std::string s = b.prev_hash + "|" + std::to_string(b.timestamp) + "|" + std::to_string(b.version) + "|" + b.tx_root + "|" + std::to_string(b.nonce) + "|" + std::to_string(b.difficulty);
-        return hash(convertTextTB(s));
-    };
-
-    auto goodPow = [](const std::string& h, int difficulty) {
-        if (difficulty <= 0) return false;
-        if (h.size() < (size_t)difficulty) return false;
-        for (int i = 0; i < difficulty; i++) if (h[i] != '0') return false;
-        return true;
-    };
-
-    auto structureError = [&](const Transaction& t) {
-        if (balances.find(t.sender) == balances.end()) return std::string("nezinomas siuntejas");
-        if (balances.find(t.receiver) == balances.end()) return std::string("nezinomas gavejas");
-        if (t.sender == t.receiver) return std::string("siuntejas ir gavejas tas pats");
-        if (t.amount <= 0) return std::string("suma turi buti teigiama");
-        std::string s = t.sender + "|" + t.receiver + "|" + std::to_string(t.amount) + "|" + std::to_string(t.sequence);
-        if (hash(convertTextTB(s)) != t.transaction_id) return std::string("neteisingas transakcijos ID");
-        return std::string("");
-    };
 
     std::set<std::string> includedIds;
     long long startSum = totalSum(balances);
@@ -157,35 +188,9 @@ void runLoop() {
     std::mt19937 generator(222);
     std::string stopReason;
 
-    auto checkBlock = [&](const Block& b, std::map<std::string, long long>& check) {
-        if (b.prev_hash != blockHash(chain.back())) return false;
-        if (b.version != supportedVersion) return false;
-        if (b.difficulty != requiredDifficulty) return false;
-        if (b.transactions.empty()) return false;
-        if (b.transactions.size() > maxTransactions) return false;
-
-        check = balances;
-        std::set<std::string> blockIds;
-
-        for (auto& t : b.transactions) {
-            if (structureError(t) != "") return false;
-            if (includedIds.count(t.transaction_id) != 0) return false;
-            if (blockIds.count(t.transaction_id) != 0) return false;
-            if (check[t.sender] < t.amount) return false;
-            if (check[t.receiver] > std::numeric_limits<long long>::max() - t.amount) return false;
-            check[t.sender] -= t.amount;
-            check[t.receiver] += t.amount;
-            blockIds.insert(t.transaction_id);
-        }
-
-        if (calculateMerkleRoot(b.transactions) != b.tx_root) return false;
-        if (!goodPow(blockHash(b), requiredDifficulty)) return false;
-        return true;
-    };
-
     while (!pool.empty()) {
         for (size_t i = 0; i < pool.size();) {
-            std::string err = structureError(pool[i]);
+            std::string err = structureError(pool[i], balances);
             if (err == "" && includedIds.count(pool[i].transaction_id) != 0) err = "ID jau itrauktas i grandine";
             if (err != "") {
                 rejected.push_back({pool[i], err});
@@ -267,7 +272,7 @@ void runLoop() {
                 if (b.transactions.empty()) continue;
                 if (goodPow(blockHash(b), requiredDifficulty)) {
                     std::map<std::string, long long> check;
-                    if (checkBlock(b, check)) {
+                    if (checkBlock(b, chain.back(), balances, includedIds, check)) {
                         winner = k;
                         break;
                     }
@@ -284,7 +289,7 @@ void runLoop() {
 
         Block& block = candidates[winner];
         std::map<std::string, long long> check;
-        if (!checkBlock(block, check)) {
+        if (!checkBlock(block, chain.back(), balances, includedIds, check)) {
             stopReason = "laimetojas nepraejo pakartotines patikros";
             break;
         }
@@ -334,7 +339,7 @@ void runLoop() {
 
     std::cout << "\nLikusios:\n";
     for (auto& t : pool) {
-        std::string reason = structureError(t);
+        std::string reason = structureError(t, balances);
         if (reason == "" && includedIds.count(t.transaction_id) != 0) reason = "ID jau itrauktas i grandine";
         if (reason == "" && balances[t.sender] < t.amount) reason = "siuntejui truksta lesu dabartineje busenoje";
         if (reason == "" && balances[t.receiver] > std::numeric_limits<long long>::max() - t.amount) reason = "gavejo balansas perpildytu long long";
@@ -400,9 +405,11 @@ void testMerkleTree() {
     std::cout << "5 transakcijos: " << calculateMerkleRoot(testTransactions) << "\n";
 }
 
+#ifndef UNIT_TESTS
 int main() {
     testMerkleTree();
     std::cout << "\n--------------------------------------\n";
     runLoop();
     return 0;
 }
+#endif
