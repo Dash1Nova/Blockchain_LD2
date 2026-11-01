@@ -1,137 +1,115 @@
 # Blockchain_LD2
 
-## Hash funkcijos versijos pasirinkimas
+# v0.2
 
-Šiam laboratoriniam darbui nusprendžiau naudoti iš ankstesnio darbo hash funkcijos DI versiją, o ne savo sukurtą pradinę versiją šių priežasčių:
+## Programos vykdymo eiga
 
-- Pirmo darbo eksperimentų eigoje mano hash funkcija parodė labai prastus rezultatus, kai tikrinau kolizijų atsparumą. Skirtingo ilgio įvesčių rinkiniuose buvo užfiksuota labai daug kolizijų (10 baitų ilgio įvestis generavo 81219 kolizijų, o 1000 baitų ilgio įvestis - 80088 kolizijų). Tai gali turėti neigiamos įtakos šio darbo transakcijų unikalumo užtikrinimui.
-- Pirmo darbo mano sukurta hash funckija prastai pasirodė ir lavinos efekto eksperimente. Ties 10 baitų įvesties ilgiu bitų skirtumo vidurkis buvo apie 0,78%, ir didėjant įvesties ilgiui lavinos efektas praktiškai išnykdavo. Bendras bitų skirtumo vidurkis buvo 0.23%; hex skirtumo vidurkis - 0.49% (lyginant su teoriniu reikalavimu, kad pakeitus vieną įvesties simbolų, išvestis turi pasikeisti apie 50%). Jei tęsčiau darbą su savo sukurta funkcija, tai turėtų neigiamos įtakos PoW įgyvendinimui.
+1. Pradinių duomenų paruošimas
 
-## Paleidimas
+- Sukuriama 1000 netikrų vartotojų su atsitiktiniais pradiniais balansais (nuo 100 iki 1 000 000). Vartotojo viešasis raktas (`publick_key`) sugeneruojamas suhashinus vartotojo vardą.
+- Sukuriama 10 000 atsitiktinių transakcijų tarp šių vartotojų (pervedamos sumos nuo 1 iki 1000). Kiekvienai transakcijai suteikiamas unikalus ID.
 
-Projektui sukurti ir paleisti naudojamas CMake.
+2. Transakcijų filtravimas, mempool sudarymas
 
-1. Pirmiausia iš pagrindinio projekto katalogo sukuriamas build katalogas: `mkdir build`, `cd build`
-2. Tada sukonfigūruojamas projektas: `cmake ..`
-3. Programa sukompiliuojama: `cmake --build .`
-4. Po kompiliavimo programa paleidžiama: `Debug/LD2.exe`
+- Paimamos visos 10 000 transakcijų ir patikrinama jų pirminė struktūra (ar žinomas siuntėjas/gavėjas, ar suma teigiama, ar sutampa ID).
+- Teisingos transakcijos įkeliamos į bendrą laukiančiųjų fondą (pool), o klaidingos – atmetamos į rejected sąrašą.
 
-## Lambda išraiškų naudojimas
+3. Bloko kandidatų generavimas
 
-Funkcijoje runLoop() naudojamos lambda išraiškos, kad galima būtų aprašyti pagalbines operacijas neužteršiant kodą dar papildomomis funkcijomis. Su lambdomis susijusi logika laikoma vienoje funkcijoje `runLoop()` ir kodas tampa lengviau skaitomas.
+- Kol fonde yra transakcijų, pradedamas naujo bloko kūrimo ciklas.
+- Sukuriami 5 skirtingi bloko kandidatai. Kiekvienas kandidatas iš fondo pasiima iki 100 transakcijų, kurias siuntėjai išgali apmokėti.
+- Kiekvienam kandidatui apskaičiuojama jo transakcijų `merkle root`.
 
-Naudojamos lambda išraiškos:
+4. Kasimo (Proof-of-Work) simuliacija
 
-- `totalSum` – bendrai vartotojų lėšų sumai apskaičiuoti.
-- `blockHash` – bloko maišai apskaičiuoti.
-- `calcTxRoot` – transakcijų šakninei maišai apskaičiuoti.
-- `goodPow` – Proof of Work sąlygai patikrinti.
-- `structureError` – transakcijos klaidoms nustatyti.
+- Pradedamas kasimo ratas su pradiniu 10 000 bandymų. Jei bloko rasti nepavyksta, kitame rate bandymų skaičius dvigubinamas (iki 20k, 40k, 80k).
+- Visi 5 kandidatai iš eilės keičia savo nonce skaičių ir ieško hash kodo, kuris prasidėtų reikiamu nulių skaičiumi (pagal difficulty, kuris šiuo atveju yra 3).
 
-## Modelio aprašymas
+5. Laimėtojo patvirtinimas ir grandinės pratęsimas
 
-Kiekvienas vartotojas turi vardą, unikalų viešąjį raktą (public_key) ir pinigų likutį (balance). Programa sugeneruoja 1000 vartotojų, kurių pradinės lėšos yra nuo 100 iki 1000000.
-Transakcijos struktūra aprašo pinigų pervedimą iš vieno vartotojo kitam. Ji saugo siuntėją, gavėją, sumą, eilės numerį (sequence) ir unikalų transakcijos ID (transaction_id). ID apskaičiuojamas maišant siuntėjo, gavėjo, sumos ir eilės numerio duomenis.
-Transakcija priimama tik tada, kai jos duomenys tinkami ir siuntėjas turi pakankamai lėšų. Įvykdžius pervedimą, siuntėjo likutis sumažėja, o gavėjo padidėja ta pačia suma.
-Bloko struktūra saugo nuorodą į ankstesnio bloko maišą (prev_hash), laiko žymą (timestamp), versiją (version), transakcijų šakninę maišą (tx_root), skaičių nonce, sudėtingumo lygį (difficulty) ir transakcijų sąrašą.
-Kiekvieno bloko maiša apskaičiuojama pagal jo antraštės laukus. Blokai susiejami į grandinę, nes kiekvienas naujas blokas saugo ankstesnio bloko maišą.
-Programa sugeneruoja 10 000 transakcijų ir saugo jas laukiančių transakcijų fonde. Iš fondo atrenkama iki 100 tinkamų transakcijų vienam blokui. Prieš įtraukiant bloką patikrinamos transakcijos ir ar vartotojas turi pakankamai lėšų pervesti norimą sumą.
-Naudojamas Proof of Work metodas: didinamas nonce, kol bloko maiša prasideda trimis nuliais. Blokas įtraukiamas į grandinę tik tada, kai patikra sėkminga.
-Sistema nenaudoja komisinių ar atlygių už blokų kasimą. Todėl, jei visi pervedimai atliekami teisingai, bendra visų vartotojų lėšų suma išlieka nepakitusi.
+- Pirmasis kandidatas, sėkmingai atlikęs Proof-of-Work, keliauja į galutinę patikrą (`checkBlock`). Čia dar kartą centralizuotai peržiūrima, ar nėra dvigubo išleidimo klaidų ir ar teisingi visi balansai.
+- Blokas oficialiai prijungiamas prie grandinės, o jame buvusios transakcijos ištrinamos iš laukiančiųjų fondo (pool). Vartotojų balansai atnaujinami.
 
-## Generavimo seed
+6. Rezultatų išvedimas
 
-- Vartotojų generavimo seed: `100`.
-- Transakcijų generavimo seed: `111`.
-- Transakcijų pasirinkimo seed: `222`.
-- Sugeneruojama 1000 vartotojų ir 10 000 transakcijų.
-- Transakcijos suma: nuo 1 iki 1000.
-- Viename bloke gali būti iki 100 transakcijų.
+- Ciklas kartojasi, kol fonde nebelieka tinkamų transakcijų arba pasiekiama kasimo bandymų riba.
+- Konsolėje išspausdinama statistika apie kiekvieną bloką, kandidatą ir bendra suvestinė.
 
-## Vieno bloko išvestis (pirmas blokas)
+## Merkle medis
 
-- Bloko aukstis: `1`
-- Transakcijų skaičius: `100`
-- prev_hash: `000c5dd430a95139c42a27e4e7023f6b6a9e8b01cdc3072a45dbc90d92071546`
-- tx_root: `f23abe9e14ec154b7fcf6f779e6bce1bb50872fa707e6442e4326c7d9685153d`
-- Bloko hash: `000e21bf65308ec02e8c66fb706e5b1f7d98b42df70a61b3bad1257ed3bea487`
-- difficulty: `3`
-- nonce: `1852`
-- Bandymų skaičius: `1853`
-- Kasimo laikas: `0.0787519 s`
+Medžio lapai yra transakcijų ID jų įtraukimo į bloką tvarka. Vidiniai mazgai apskaičiuojami sujungiant kairiojo ir dešiniojo vaikų dekoduotus baitus ir pritaikant maišos funkciją.
+Jeigu tam tikrame lygyje lieka neporinis mazgas, jis sujungiamas su savo kopija.
+Jeigu bloke yra tik viena transakcija, jos ID tampa Merkle šaknimi. Tuščio genesis bloko Merkle šaknis apskaičiuojama atskirai - tiesiog tuščia maiša.
 
-## Galutinė suvestinė
+Testų su 1, 2, 3 ir 5 transakcijomis rezultatas:
 
-- Vartotoju skaičius: 1000
-- Priimta blokų (be genesis): 101
-- Itrauktų transakcijų skaičius: 9993
-- Atmestų transakcijų skaičius: 0
-- Liko fonde transakcijų: 7
-- Pradine lėšų suma: 491084187
-- Galutine lėšų suma: 491084187
-- Vykdymo laikas: 28.9073 s
-
-## Mažo testo rezultatai
-
-Transakcijų maišos paleidžiant kelis kartus sutampa. Bloko hash irgi.
-
-1. 1 paleidimas:
-
-- Bloko aukstis: 1
-- transakciju skaicius: 100
-- prev_hash: 0003620877a89b26fcba1844a5735579dfb657c105101281985466907c339cd7
-- tx_root: f23abe9e14ec154b7fcf6f779e6bce1bb50872fa707e6442e4326c7d9685153d
-- hash: 000543bd5984235ce4a6329b8fafd805b31abb70b0fd10671548b3576a242bea
-- difficulty: 3
-- nonce: 1710
-
-2. 2 paleidimas:
-
-- Bloko aukstis: 1
-- transakciju skaicius: 100
-- prev_hash: 0003620877a89b26fcba1844a5735579dfb657c105101281985466907c339cd7
-- tx_root: f23abe9e14ec154b7fcf6f779e6bce1bb50872fa707e6442e4326c7d9685153d
-- hash: 000543bd5984235ce4a6329b8fafd805b31abb70b0fd10671548b3576a242bea
-- difficulty: 3
-- nonce: 1710
-
----
-
-Prieš įtraukiant transakciją taip pat tikrinamas siuntėjo laikinas balansas. Tai užtikrina šios kodo eilutės:
-
-````cpp
-if (temp[t.sender] < t.amount) {
-    continue;
-}
-temp[t.sender] -= t.amount;
-temp[t.receiver] += t.amount;`
-Priėmus transakciją, laikini balansai atnaujinami iš karto. Jei lėšų nepakanka, transakcija į bloką neįtraukiama. Taip pat palygintos pradinė ir galutinė bendra lėšų suma — jos sutapo (Pradine lesu suma: 491084187; Galutine lesu suma: 491084187).```
-
----
-
-Ši kodo dalis apsaugo nuo transakcijų dubliavimosi - ji neleisti tai pačiai transakcijai likti fonde po įtraukimo į bloką:
-```cpp
-for (auto& t : chosen) {
-    for (size_t i = 0; i < pool.size(); i++) {
-        if (pool[i].transaction_id == t.transaction_id) {
-            pool.erase(pool.begin() + i);
-            break;
-        }
-    }
-}```
-
----
-
-Paskutinis nepilnas blokas veikia. Programos vykdymo metu 100-ajame bloke buvo 95 transakcijos. Tai parodo, kad programa gali sudaryti blokus su mažesniu nei 100 transakcijų skaičiumi.
 ```text
-Paskutinio bloko išvestis:
-Bloko aukstis: 100
-transakciju skaicius: 95
-prev_hash: 000b3faddb2b0481eb2ee08641f4c3d3cb9dabfff61a7fe57bcefe5a96792b61
-tx_root: 40e8faa53c367d04dfa7e6e3bf832a4464e38c98c5e070a18cfb0d2075ee9c2d
-hash: 000627138d775ef4309a6fed13ae69b79ba4d664226bd73e8adbfdce7b93d705
-difficulty: 3
-nonce: 215
-bandymu: 216
-kasimo laikas: 0.0276275 s```
-````
+1 transakcija: 15206b9f696aacacef4c7d460a11818d1d5a1300b8eee97d47a4afbd0dc5eb64
+2 transakcijos: 4415e0901a92e2d6c948ebc996166700dd30ef5cb63af22293f9caaf3e4f71fe
+3 transakcijos: 6a9f89e475aa416fdcaba557181a8552cc7fb73f22ad1668e06a6c958ad18490
+5 transakcijos: 4f5cdb1870442fe6629bd51545cfda3cfbf9e9c7781851b33f8e0deb0d15d424
+```
+
+## Transakcijų validavimas
+
+Prieš įtraukiant transakcijas į fondą tikrinama:
+
+- Ar siuntėjas ir gavėjas egzistuoja.
+- Ar siuntėjas ir gavėjas nėra tas pats vartotojas.
+- Ar transakcijos suma yra teigiama.
+- Ar transakcijos ID atitinka jos duomenis.
+- Ar toks ID dar nėra fonde.
+  Vėliau, prieš sudarant blokus, papildomai tikrinama, ar transakcija dar nėra įtraukta į grandinę.
+  Sudarydama kandidato bloką programa tikrina, ar siuntėjas turi pakankamai lėšų. Jei jų nepakanka, transakcija į tą bloką neįtraukiama.
+
+## Blokų validavimas
+
+Prieš įtraukiant bloką į grandinę tikrinama:
+
+- Ar prev_hash sutampa su paskutinio grandinės bloko maiša.
+- Ar bloko versija yra palaikoma.
+- Ar sudėtingumo lygis atitinka nustatytą reikšmę.
+- Ar bloke yra nuo 1 iki 100 transakcijų.
+- Ar transakcijos yra tinkamos ir jų ID nesikartoja.
+- Ar siuntėjams pakanka lėšų ir neperpildomi balansai.
+- Ar bloko Merkle šaknis sutampa su apskaičiuota šaknimi.
+- Ar bloko maiša atitinka Proof of Work reikalavimą.
+  Tik visas patikras praėjęs blokas įtraukiamas į grandinę. Prieš įtraukimą balansai tikrinami laikinoje kopijoje, todėl netinkamo bloko atveju patvirtinti balansai nepakeičiami.
+
+## Kandidatų konkurencija
+
+Kiekviename etape sukuriami 5 kandidatai. Visi jie naudoja tą patį transakcijų fondą, pradinius balansus ir ankstesnio bloko maišą.
+Kiekvienam kandidatui sudaromas atskiras transakcijų sąrašas ir laikina balansų kopija. Viename bloke gali būti ne daugiau kaip 100 transakcijų.
+Kandidatai kasami tokia tvarka:
+
+- 1 etapas – 10 000 bandymų.
+- 2 etapas – papildomi 20 000 bandymų.
+- 3 etapas – papildomi 40 000 bandymų.
+- 4 etapas – papildomi 80 000 bandymų.
+  Po kiekvieno etapo tikrinama, ar kandidatas rado tinkamą bloką. Nurodyti 10 000, 20 000, 40 000 ir 80 000 bandymų skaičiai yra papildomi kasimo bandymai. Tai nėra privalomas bandymų skaičius. Jei kandidatas randa tinkamą bloką anksčiau, kasimas baigiamas. Laimėjo pirmasis tinkamas kandidatas. Prieš įtraukiant jo bloką į grandinę, jis dar kartą patikrinamas.
+
+## Kandidatų bandymų ir laiko suvestinė
+
+Žemiau pateikiami pirmojo programos paleidimo rezultatai.
+| Kandidatas | Bandymų skaičius | Kasimo laikas |
+|-----|-----|-----|
+| 1 | 1135 | 0.0504065 s |
+| 2 | 1135 | 0.0482412 s |
+| 3 | 1135 | 0.0414935 s |
+| 4 | 1135 | 0.0422126 s |
+| 5 | 1135 | 0.0426729 s |
+
+Kandidatas 1 laimėjo, nes pagal programos logiką kandidatai tikrinami nustatyta tvarka: 1, 2, 3, 4, 5. 1 kandidato blokas atitiko „Proof of Work“ reikalavimą ir praėjo bloko validaciją. 1 kandidatas laimėjo todėl, kad buvo pirmas tikrinimo eilėje ir jo blokas buvo tinkamas. Kasimo greitis čia neturi įtakos.
+
+## Kodėl ši simuliacija nėra P2P konsensusas?
+
+- `Teorijoje`: P2P konsensusas veikia tik tada, kai daug atskirų ir nepriklausomų mazgų bando susitarti tarpusavyje dėl vienintelės teisingos transakcijų istorijos.
+  `Kode`: Jokių atskirų mazgų nėra – viską daro viena programa. Visi 5 bloko kandidatai sukasi tame pačiame cikle for (int k = 0; k < 5; k++). Tai ne nepriklausomi tinklo dalyviai, o tiesiog programos eilutės, laukiančios savo eilės.
+- `Teorijoje`: Realiame tinkle informacija keliauja lėtai, pranešimai vėluoja, veikia paskalų principu.
+  `Kode`: Kadangi viskas vyksta vieno kompiuterio atmintyje, nauja informacija visiems tampa žinoma akimirksniu. Čia nėra vėlavimo, neįmanoma sumodeliuoti situacijos, kai vienas mazgas apie naują bloką sužino anksčiau, o kitas – vėliau.
+- `Teorijoje`: P2P tinkle nėra vieno idealaus laikrodžio, todėl mazgai negali aklai pasitikėti transakcijų laiko žymomis.
+  `Kode`: Visi 5 kandidatai laiko žymą pasiima tą pačią - iš kompiuterio procesoriaus per system_clock::now(). Realybėje mazgai gyvena skirtingose laiko zonose ir jų vidiniai laikrodžiai šiek tiek skiriasi, o kode visi turi vienodą laiką.
+- `Teorijoje`: Jei du mazgai vienu metu randa bloką, tinklas išsiskiria į dvi šakas ir mazgams reikia grandinės pasirinkimo taisyklės (pavyzdžiui, rinktis ilgesnę grandinę), kad vėl susijungtų.
+  `Kode`: Nėra šakojimosi. Programa aklai paima patį pirmą sėkmingai kasimo užduotį įveikusį kandidatą ir iškart jį prijungia. Nėra suprogramuota galimybė išspręsti situacijos, jei du mazgai atneštų skirtingus blokus vienu metu.
+- `Teorijoje`: Kiekvienas mazgas pats savarankiškai tikrina gautą bloką ir nusprendžia, tikėti juo ar ne.
+  `Kode`: Viską valdo viena bendra funkcija `checkBlock`. Ji viena patikrina bloką ir iškart pakeičia pinigines visų vartotojų sąskaitas bendroje programos atmintyje. Nėra jokio individualaus mazgų „apsisprendimo“.
