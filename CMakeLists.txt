@@ -3,7 +3,7 @@ project(LD2)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-add_executable(LD2 src/LD2.cpp src/hash.cpp)
+add_executable(LD2 src/LD2.cpp src/hash.cpp src/utxo.cpp)
 target_include_directories(LD2 PRIVATE src)
 
 include(FetchContent)
