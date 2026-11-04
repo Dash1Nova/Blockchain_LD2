@@ -133,12 +133,16 @@ Programos atsitiktiniams duomenims generuoti naudojamas `std::mt19937` generator
 ## Įrodymai
 
 - Projekto struktūra:
+<img width="385" height="537" alt="Ekrano kopija 2026-11-04 232251" src="https://github.com/user-attachments/assets/e57b9aeb-8936-406e-bc89-917299a32941" />
 
 - Pirmojo bloko išvestis:
+<img width="687" height="268" alt="Ekrano kopija 2026-11-04 233041" src="https://github.com/user-attachments/assets/677e608b-31dc-415e-a6b5-51e8c71fb6e5" />
 
 - Galutinė programos suvestinė:
+<img width="701" height="728" alt="Ekrano kopija 2026-11-04 233447" src="https://github.com/user-attachments/assets/73a7c0e5-0b96-4926-bc2f-aa21f42f9028" />
 
 - Automatinių testų rezultatai:
+<img width="686" height="736" alt="Ekrano kopija 2026-11-04 233532" src="https://github.com/user-attachments/assets/c3155e83-ff8e-4196-9294-c65f8f6d1d3f" />
 
 ## 4. v0.2 ir v0.3 palyginimas
 
