@@ -5,6 +5,7 @@
 #include <set>
 
 #include "hash.h"
+#include "utxo.h"
 
 struct User {
     std::string name;
@@ -149,6 +150,14 @@ bool checkBlock(const Block& b, const Block& prev, const std::map<std::string, l
 void runLoop() {
     auto startAll = std::chrono::steady_clock::now();
     std::vector<User> users = generateUsers();
+    std::vector<std::pair<std::string, long long>> initialBalances;
+
+    for (const auto& u : users) {
+        initialBalances.push_back({u.public_key, u.balance});
+    }
+    UTXOSet utxos = createInitialUTXOs(initialBalances);
+    
+    long long initialUTXOSum = totalUTXOSum(utxos);
     std::vector<Transaction> allTransactions = generateTransactions(users);
     std::vector<Transaction> pool;
     size_t transactionCount = allTransactions.size();

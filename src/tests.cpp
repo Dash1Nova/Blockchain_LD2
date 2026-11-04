@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #define UNIT_TESTS
 #include "LD2.cpp"
+#include "utxo.h"
 
 // ---------- pagalbines funkcijos ----------
 
@@ -209,4 +210,120 @@ TEST_F(ChainTest, LosingCandidateRejectedAfterWinnerAccepted) {
     std::map<std::string, long long> tmp;
     EXPECT_FALSE(checkBlock(candB, candA, afterA, includedA, tmp));
     EXPECT_EQ(afterA[keyOf(3)], 1000);
+}
+
+
+// ---------- 8. UTXO testai ----------
+
+class UTXOTest : public ::testing::Test {
+protected:
+    std::string user1 = keyOf(1);
+    std::string user2 = keyOf(2);
+    std::string user3 = keyOf(3);
+
+    UTXOSet utxos;
+
+    void SetUp() override {
+        std::vector<std::pair<std::string, long long>> initialBalances = {
+            {user1, 1000},
+            {user2, 1000},
+            {user3, 1000}
+        };
+
+        utxos = createInitialUTXOs(initialBalances);
+    }
+};
+
+// 1. Pradiniu UTXO sukūrimas
+
+TEST_F(UTXOTest, InitialUTXOsCreated) {
+    EXPECT_EQ(utxos.size(), 3);
+    EXPECT_EQ(totalUTXOSum(utxos), 3000);
+}
+
+// 2. Galiojantis mokėjimas ir grąža
+
+TEST_F(UTXOTest, ValidPaymentAcceptedWithChange) {
+    long long initialSum = totalUTXOSum(utxos);
+
+    UTXOTransaction tx;
+    std::string error;
+
+    ASSERT_TRUE(createPayment(user1, user2, 300, utxos, tx, error));
+    ASSERT_TRUE(applyUTXOTransaction(tx, utxos, error)) << error;
+
+    EXPECT_EQ(totalUTXOSum(utxos), initialSum);
+
+    long long receiverAmount = 0;
+    long long senderAmount = 0;
+
+    for (const auto& entry : utxos) {
+        if (entry.second.owner == user2)
+            receiverAmount += entry.second.amount;
+
+        if (entry.second.owner == user1)
+            senderAmount += entry.second.amount;
+    }
+
+    EXPECT_EQ(receiverAmount, 1300);
+    EXPECT_EQ(senderAmount, 700);
+}
+
+// 3. Neegzistuojanti UTXO išvestis
+
+TEST_F(UTXOTest, UnknownOutputRejected) {
+    UTXOTransaction tx;
+    std::string error;
+
+    tx.sender = user1;
+    tx.inputs.push_back({"unknown_transaction_id", 0});
+    tx.outputs.push_back({user2, 1000});
+    tx.txId = calculateUTXOTxId(tx);
+
+    EXPECT_FALSE(applyUTXOTransaction(tx, utxos, error));
+    EXPECT_EQ(totalUTXOSum(utxos), 3000);
+}
+
+// 4. Pakartotinis tos pačios išvesties panaudojimas
+
+TEST_F(UTXOTest, DoubleSpendRejected) {
+    UTXOTransaction firstTx;
+    UTXOTransaction secondTx;
+    std::string error;
+
+    ASSERT_TRUE(createPayment(user1, user2, 300, utxos, firstTx, error));
+    ASSERT_TRUE(applyUTXOTransaction(firstTx, utxos, error));
+
+    // Antroji transakcija bando panaudoti tą pačią seną išvestį.
+    secondTx = firstTx;
+
+    EXPECT_FALSE(applyUTXOTransaction(secondTx, utxos, error));
+    EXPECT_EQ(totalUTXOSum(utxos), 3000);
+}
+
+// 5. Įvesčių ir išvesčių sumų neatitikimas
+
+TEST_F(UTXOTest, ValueMismatchRejected) {
+    UTXOTransaction tx;
+    std::string error;
+
+    ASSERT_TRUE(createPayment(user1, user2, 300, utxos, tx, error));
+
+    // Pakeičiama išvesties suma ir atnaujinamas ID,
+    // kad būtų tikrinamas būtent sumų neatitikimas.
+    tx.outputs[0].amount += 100;
+    tx.txId = calculateUTXOTxId(tx);
+
+    EXPECT_FALSE(applyUTXOTransaction(tx, utxos, error));
+    EXPECT_EQ(totalUTXOSum(utxos), 3000);
+}
+
+// 6. Nepakankamas lėšų kiekis
+
+TEST_F(UTXOTest, InsufficientFundsRejected) {
+    UTXOTransaction tx;
+    std::string error;
+
+    EXPECT_FALSE(createPayment(user1, user2, 2000, utxos, tx, error));
+    EXPECT_EQ(totalUTXOSum(utxos), 3000);
 }
