@@ -5,6 +5,9 @@
 #include <set>
 
 #include "hash.h"
+#include "transaction.h"
+#include "merkle.h"
+#include "block.h"
 
 struct User {
     std::string name;
@@ -28,14 +31,6 @@ std::vector<User> generateUsers() {
 
     return users;
 }
-
-struct Transaction {
-    std::string sender;
-    std::string receiver;
-    long long amount;
-    int sequence;
-    std::string transaction_id;
-};
 
 std::vector<Transaction> generateTransactions(const std::vector<User>& users) {
     std::vector<Transaction> transactions;
@@ -64,52 +59,6 @@ std::vector<Transaction> generateTransactions(const std::vector<User>& users) {
     return transactions;
 }
 
-struct Block {
-    std::string prev_hash;
-    long long timestamp;
-    int version;
-    std::string tx_root;
-    long long nonce;
-    int difficulty;
-    std::vector<Transaction> transactions;
-};
-
-const int requiredDifficulty = 3;
-const int supportedVersion = 1;
-const size_t maxTransactions = 100;
-
-Block genesisBlock() {
-    Block genesis;
-    genesis.prev_hash = "0000000000000000000000000000000000000000000000000000000000000000";
-    genesis.timestamp = 0;
-    genesis.version = 1;
-    genesis.tx_root = hash(convertTextTB(""));
-    genesis.nonce = 0;        
-    genesis.difficulty = 3;   
-    genesis.transactions = std::vector<Transaction>();
-    return genesis;
-}
-
-std::string calculateMerkleRoot(const std::vector<Transaction>& txs);
-
-long long totalSum(const std::map<std::string, long long>& bal) {
-    long long sum = 0;
-    for (auto& p : bal) sum += p.second;
-    return sum;
-}
-
-std::string blockHash(const Block& b) {
-    std::string s = b.prev_hash + "|" + std::to_string(b.timestamp) + "|" + std::to_string(b.version) + "|" + b.tx_root + "|" + std::to_string(b.nonce) + "|" + std::to_string(b.difficulty);
-    return hash(convertTextTB(s));
-}
-
-bool goodPow(const std::string& h, int difficulty) {
-    if (difficulty <= 0) return false;
-    if (h.size() < (size_t)difficulty) return false;
-    for (int i = 0; i < difficulty; i++) if (h[i] != '0') return false;
-    return true;
-}
-
 std::string structureError(const Transaction& t, const std::map<std::string, long long>& balances) {
     if (balances.find(t.sender) == balances.end()) return std::string("nezinomas siuntejas");
     if (balances.find(t.receiver) == balances.end()) return std::string("nezinomas gavejas");
@@ -118,32 +67,6 @@ std::string structureError(const Transaction& t, const std::map<std::string, lon
     std::string s = t.sender + "|" + t.receiver + "|" + std::to_string(t.amount) + "|" + std::to_string(t.sequence);
     if (hash(convertTextTB(s)) != t.transaction_id) return std::string("neteisingas transakcijos ID");
     return std::string("");
-}
-
-bool checkBlock(const Block& b, const Block& prev, const std::map<std::string, long long>& balances, const std::set<std::string>& includedIds, std::map<std::string, long long>& check) {
-    if (b.prev_hash != blockHash(prev)) return false;
-    if (b.version != supportedVersion) return false;
-    if (b.difficulty != requiredDifficulty) return false;
-    if (b.transactions.empty()) return false;
-    if (b.transactions.size() > maxTransactions) return false;
-
-    check = balances;
-    std::set<std::string> blockIds;
-
-    for (auto& t : b.transactions) {
-        if (structureError(t, check) != "") return false;
-        if (includedIds.count(t.transaction_id) != 0) return false;
-        if (blockIds.count(t.transaction_id) != 0) return false;
-        if (check.at(t.sender) < t.amount) return false;
-        if (check.at(t.receiver) > std::numeric_limits<long long>::max() - t.amount) return false;
-        check.at(t.sender) -= t.amount;
-        check.at(t.receiver) += t.amount;
-        blockIds.insert(t.transaction_id);
-    }
-
-    if (calculateMerkleRoot(b.transactions) != b.tx_root) return false;
-    if (!goodPow(blockHash(b), requiredDifficulty)) return false;
-    return true;
 }
 
 void runLoop() {
@@ -158,16 +81,8 @@ void runLoop() {
     std::vector<std::pair<Transaction, std::string>> rejected;
 
     for (auto& t : allTransactions) {
-        std::string s = t.sender + "|" + t.receiver + "|" + std::to_string(t.amount) + "|" + std::to_string(t.sequence);
-        std::string error = "";
-
-        if (balances.find(t.sender) == balances.end()) error = "nezinomas siuntejas";
-        else if (balances.find(t.receiver) == balances.end()) error = "nezinomas gavejas";
-        else if (t.sender == t.receiver) error = "siuntejas ir gavejas tas pats";
-        else if (t.amount <= 0) error = "suma turi buti teigiama";
-        else if (hash(convertTextTB(s)) != t.transaction_id) error = "neteisingas transakcijos ID";
-        else if (poolIds.count(t.transaction_id) != 0) error = "pasikartojantis ID fonde";
-
+        std::string error = structureError(t, balances);
+        if (error == "" && poolIds.count(t.transaction_id) != 0) error = "pasikartojantis ID fonde";
         if (error != "") rejected.push_back({t, error});
         else {
             pool.push_back(t);
@@ -175,17 +90,12 @@ void runLoop() {
         }
     }
 
-
     std::set<std::string> includedIds;
     long long startSum = totalSum(balances);
     std::vector<Block> chain;
     Block genesis = genesisBlock();
     chain.push_back(genesis);
-    const int requiredDifficulty = genesis.difficulty;
-    const int supportedVersion = 1;
-    const size_t maxTransactions = 100;
 
-    std::mt19937 generator(222);
     std::string stopReason;
 
     while (!pool.empty()) {
@@ -346,44 +256,6 @@ void runLoop() {
         if (reason == "") reason = "neitraukta, nes darbas sustabdytas: " + stopReason;
         std::cout << "seq " << t.sequence << " - " << reason << "\n";
     }
-}
-
-int hexToNumber(char c) {
-    if (c >= '0' && c <= '9') return c - '0';
-    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-    return -1;
-}
-
-std::string twoHashJoin(const std::string& left, const std::string& right) {
-    std::vector<uint8_t> bytes;
-    for (size_t i = 0; i < left.length(); i += 2) {
-        int first = hexToNumber(left[i]);
-        int second = hexToNumber(left[i + 1]);
-        bytes.push_back(first * 16 + second);
-    }
-    for (size_t i = 0; i < right.length(); i += 2) {
-        int first = hexToNumber(right[i]);
-        int second = hexToNumber(right[i + 1]);
-        bytes.push_back(first * 16 + second);
-    }
-    return hash(bytes);
-}
-
-std::string calculateMerkleRoot(const std::vector<Transaction>& txs) {
-    if (txs.empty()) return hash(convertTextTB(""));
-    std::vector<std::string> hashes;
-    for (const auto& tx : txs) hashes.push_back(tx.transaction_id);
-
-    while (hashes.size() > 1) {
-        std::vector<std::string> new_level;
-        for (size_t i = 0; i < hashes.size(); i += 2) {
-            if (i + 1 < hashes.size()) new_level.push_back(twoHashJoin(hashes[i], hashes[i + 1]));
-            else new_level.push_back(twoHashJoin(hashes[i], hashes[i]));
-        }
-        hashes = new_level;
-    }
-    return hashes[0];
 }
 
 void testMerkleTree() {
