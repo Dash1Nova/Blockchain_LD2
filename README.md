@@ -466,3 +466,102 @@ total_fee: 0.00000000
 | Būsena                     |        Nepatvirtinta |       Patvirtinta |
 
 Šis bandymas parodė, kad nepatvirtinta transakcija saugoma mempool, o iškasus naują bloką ji įtraukiama į blokų grandinę ir gauna patvirtinimą.
+
+# Bitcoin duomenų analizė su Python
+
+Šio darbo tikslas – naudojant Python ir `python-bitcoinlib` biblioteką prisijungti prie lokalaus Bitcoin Core regtest tinklo per RPC sąsają ir išanalizuoti tinklo informaciją, Bitcoin transakciją bei bloką.
+
+Naudojamas tinklas – `regtest`. RPC prievadas – `19011`. Python aplinkoje naudojama `python-bitcoinlib` versija `0.12.2`.
+
+Projektą sudaro trys programos:
+
+- `rpc_example.py` – Bitcoin Core tinklo ir programos informacijos gavimas.
+- `rpc_transaction.py` – 1 BTC mokėjimo transakcijos analizė.
+- `rpc_block.py` – bloko transakcijų išvesčių analizė.
+
+## Programų rezultatai ir paaiškinimai
+
+### `rpc_example.py` – tinklo informacija
+
+Programa per RPC iškviečia `getblockchaininfo` ir `getnetworkinfo` metodus. Ji pateikia aktyvaus tinklo pavadinimą, blokų ir antraščių skaičių, pradinio sinchronizavimo būseną, Bitcoin Core versiją, aktyvių ryšių skaičių ir stebėjimo laiką.
+
+![alt text](image.png)
+
+Gauti rezultatai:
+
+| Rodiklis               | Reikšmė               |
+| ---------------------- | --------------------- |
+| Chain                  | `regtest`             |
+| Blocks                 | `103`                 |
+| Headers                | `103`                 |
+| Initial block download | `False`               |
+| Bitcoin Core versija   | `230000`              |
+| Aktyvūs ryšiai         | `0`                   |
+| Stebėjimo laikas (UTC) | `2026-11-09 13:04:43` |
+
+**Paaiškinimas.** `chain` reikšmė `regtest` patvirtina, kad naudojamas vietinis testinis Bitcoin tinklas. `blocks` ir `headers` reikšmės sutampa, todėl šiame mazge žinomų blokų antraščių skaičius atitinka atsisiųstų blokų skaičių. `Initial block download = False` reiškia, kad mazgas nėra pradinio sinchronizavimo būsenoje.
+
+Aktyvių ryšių skaičius yra 0. Izoliuotame regtest tinkle tai savaime nėra gedimas, nes toks tinklas gali veikti lokaliai ir neturėti išorinių mazgų. Taip pat nedidelis blokų skaičius ar senesnių blokų nebuvimas nėra gedimo požymis, nes regtest nėra skirtas sinchronizuoti visą viešojo Bitcoin tinklo istoriją.
+
+### `rpc_transaction.py` – 1 BTC transakcijos analizė
+
+Programa naudoja `getrawtransaction(txid, 1, blockhash)` metodą, kad gautų išsamų patvirtintos transakcijos JSON aprašą.
+
+Analizuotos transakcijos TXID:
+
+`6e81edf620e0f413960991b6e57cc38ac5195316533fdf4ac8844da573ef02b0`
+
+Bloko hash:
+
+`5242bf8d90e2b8bd729e095dafcc4297c1e79c522a5a1464631a60681f9cbfcc`
+
+Transakcija turi 2 patvirtinimus.
+
+![alt text](image-1.png)
+
+**Įvestis (vin):**
+
+| Laukas          | Reikšmė                                                            |
+| --------------- | ------------------------------------------------------------------ |
+| Ankstesnis TXID | `d5fede9a7154dd8bf8eb52aebbd7ce87a6248a223d45efe22500ef3412e64b51` |
+| VOUT indeksas   | `0`                                                                |
+
+Įvestis nurodo ankstesnę transakciją ir jos išvesties indeksą, iš kurios panaudotos lėšos.
+
+**Išvestys (vout):**
+
+| Indeksas |  Suma (BTC) | Skripto tipas        | Adresas                                        |
+| -------- | ----------: | -------------------- | ---------------------------------------------- |
+| 0        | 48.99999718 | `witness_v0_keyhash` | `bcrt1qldlnxgu9x2q89q0zhnf3zw3s0swx5mrnz7vmdz` |
+| 1        |  1.00000000 | `witness_v0_keyhash` | `bcrt1qcy7fa33eguuluhdunr3n0pc5ny8c79c6lvnxkv` |
+
+Bendra išvesčių suma: **49.99999718 BTC**.
+
+**Paaiškinimas.** Viena iš išvesčių yra 1 BTC mokėjimas nurodytu adresu. Kita išvestis yra grąža į kitą adresą. Bitcoin transakcijoje visa įvesties vertė nebūtinai perduodama gavėjui – nepanaudota dalis gali būti grąžinama siuntėjui. Skirtumas tarp įvesties ir išvesčių sumos yra transakcijos mokestis.
+
+Programa analizuoja `vin` ir `vout` atskirai. `vin` nurodo ankstesnių transakcijų išvestis, o `vout` aprašo šios transakcijos sukurtas naujas išvestis. Adreso laukas pateikiamas tik tada, kai jį galima nustatyti iš skripto.
+
+### `rpc_block.py` – bloko analizė
+
+Programa naudoja `getblock(blockhash, 2)` metodą, kuris grąžina išsamų bloko ir jo transakcijų JSON aprašą. Taip nereikia kiekvienai bloko transakcijai atskirai iškviesti `getrawtransaction`.
+
+![alt text](image-2.png)
+
+Gauti rezultatai:
+
+| Rodiklis             | Reikšmė                                                            |
+| -------------------- | ------------------------------------------------------------------ |
+| Bloko aukštis        | `102`                                                              |
+| Bloko hash           | `5242bf8d90e2b8bd729e095dafcc4297c1e79c522a5a1464631a60681f9cbfcc` |
+| Transakcijų skaičius | `2`                                                                |
+| Visų išvesčių suma   | `100.00000000 BTC`                                                 |
+
+**Paaiškinimas.** Bloke yra dvi transakcijos: coinbase transakcija ir analizuotas 1 BTC mokėjimas. Susumavus visų abiejų transakcijų išvestis gaunama 100 BTC.
+
+Ši suma nėra naujai sukurtų monetų kiekis ir nėra ekonominių mokėjimų apimtis. Į ją įtraukiamos visos išvestys, įskaitant coinbase transakcijos išvestis ir mokėjimo transakcijos grąžą. Todėl ši reikšmė apibūdina tik bendrą konkretaus bloko transakcijų išvesčių sumą.
+
+## Skaičiavimų tikslumas ir klaidų apdorojimas
+
+Piniginėms sumoms naudojamas `Decimal` tipas, o ne dvejetainis `float`. Tai leidžia išvengti netikslių dešimtainių skaičių apvalinimo klaidų sumuojant BTC reikšmes.
+
+Programose naudojamas klaidų apdorojimas: nepavykus prisijungti prie Bitcoin Core RPC arba įvykus kitai vykdymo klaidai, pateikiamas klaidos pranešimas. Transakcijos ir bloko analizėje taip pat naudojamos numatytosios reikšmės tais atvejais, kai tam tikro lauko nėra, pavyzdžiui, kai skripto adreso laukas nepateikiamas.
